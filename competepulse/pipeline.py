@@ -40,12 +40,20 @@ logger = get_logger("competepulse.pipeline")
 def load_targets(settings: Settings) -> list[Target]:
     """Read the competitor target list (targets.json by default)."""
     path = Path(settings.targets_path)
+    fallback = Path(__file__).resolve().parent.parent / "targets.example.json"
     if not path.exists():
-        fallback = Path(__file__).resolve().parent.parent / "targets.example.json"
         logger.warning("Targets file %s not found — falling back to %s", path, fallback.name)
         path = fallback
 
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        raw = []
+
+    if not raw and fallback.exists():
+        logger.info("Targets list empty, loading defaults from %s", fallback.name)
+        raw = json.loads(fallback.read_text(encoding="utf-8"))
+
     targets: list[Target] = []
     for item in raw:
         page_types = item.get("page_types") or list(PAGE_TYPES)

@@ -96,40 +96,43 @@ async def send_slack_notification(
         logger.info("Slack webhook alert posted")
 
     if bot_token and settings.slack_channel_id:
-        # Slack's modern two-step upload: get an upload URL, then POST the file.
-        async with httpx.AsyncClient(timeout=30) as client:
-            init_response = await client.post(
-                "https://slack.com/api/files.getUploadURLExternal",
-                headers={"Authorization": f"Bearer {bot_token}"},
-                data={"filename": pdf_path.name, "length": str(pdf_path.stat().st_size)},
-            )
-            init_response.raise_for_status()
-            init_data = init_response.json()
-            if not init_data.get("ok"):
-                raise RuntimeError(f"Slack upload URL request failed: {init_data.get('error')}")
-
-            with pdf_path.open("rb") as f:
-                upload_response = await client.post(
-                    init_data["upload_url"],
-                    files={"file": (pdf_path.name, f, "application/pdf")},
+        try:
+            # Slack's modern two-step upload: get an upload URL, then POST the file.
+            async with httpx.AsyncClient(timeout=30) as client:
+                init_response = await client.post(
+                    "https://slack.com/api/files.getUploadURLExternal",
+                    headers={"Authorization": f"Bearer {bot_token}"},
+                    data={"filename": pdf_path.name, "length": str(pdf_path.stat().st_size)},
                 )
-            upload_response.raise_for_status()
+                init_response.raise_for_status()
+                init_data = init_response.json()
+                if not init_data.get("ok"):
+                    logger.warning("Slack upload URL request failed: %s", init_data.get('error'))
+                else:
+                    with pdf_path.open("rb") as f:
+                        upload_response = await client.post(
+                            init_data["upload_url"],
+                            files={"file": (pdf_path.name, f, "application/pdf")},
+                        )
+                    upload_response.raise_for_status()
 
-            complete_response = await client.post(
-                "https://slack.com/api/files.completeUploadExternal",
-                headers={"Authorization": f"Bearer {bot_token}"},
-                data={
-                    "files": f'[{{"id":"{init_data["file_id"]}"}}]',
-                    "channel_id": settings.slack_channel_id,
-                    "initial_comment": "Here is this week's executive brief.",
-                },
-            )
-            complete_json = complete_response.json()
-            if not complete_json.get("ok"):
-                logger.error("Slack file upload completion response: %s", str(complete_json))
-                raise RuntimeError(f"Slack file upload completion failed: {complete_json.get('error')}")
-        delivered = True
-        logger.info("Slack PDF uploaded to channel %s", settings.slack_channel_id)
+                    complete_response = await client.post(
+                        "https://slack.com/api/files.completeUploadExternal",
+                        headers={"Authorization": f"Bearer {bot_token}"},
+                        data={
+                            "files": f'[{{"id":"{init_data["file_id"]}"}}]',
+                            "channel_id": settings.slack_channel_id,
+                            "initial_comment": "Here is this week's executive brief.",
+                        },
+                    )
+                    complete_json = complete_response.json()
+                    if not complete_json.get("ok"):
+                        logger.warning("Slack file upload incomplete: %s (Invite @computepulse to the channel to enable PDF attachments)", complete_json.get('error'))
+                    else:
+                        delivered = True
+                        logger.info("Slack PDF uploaded to channel %s", settings.slack_channel_id)
+        except Exception as exc:
+            logger.warning("Slack PDF file upload skipped: %s", exc)
 
     return delivered
 
