@@ -53,7 +53,7 @@ def test_target_persistence_fallback(tmp_path):
     )
 
     tfile = tmp_path / "targets.json"
-    settings = Settings(targets_path=str(tfile), supabase_url="", supabase_key="")
+    settings = Settings(_env_file=None, targets_path=tfile, supabase_url="", supabase_key="")
 
     # Initially empty
     targets = get_monitored_targets(settings)

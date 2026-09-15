@@ -440,12 +440,77 @@
 
   <!-- CLIENT-SIDE SCRIPT -->
   <script>
+    const STORAGE_KEY = 'competepulse_monitored_domains';
     let pollInterval = null;
     let currentPayload = { domain: '', content: '' };
     let currentActiveTab = 'scanner';
 
+    function cleanDomainStr(str) {
+      if (!str) return '';
+      let d = String(str).trim().toLowerCase();
+      d = d.replace(/^https?:\/\//i, '');
+      d = d.split('/')[0].split('?')[0].split('#')[0];
+      return d;
+    }
+
+    function getLocalTargets() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (e) {
+        console.warn('localStorage read error:', e);
+      }
+      return [];
+    }
+
+    function saveLocalTargets(targets) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(targets));
+      } catch (e) {
+        console.warn('localStorage write error:', e);
+      }
+    }
+
+    function upsertLocalTarget(domain, pageTypes) {
+      const clean = cleanDomainStr(domain);
+      if (!clean) return getLocalTargets();
+      const pages = Array.isArray(pageTypes) && pageTypes.length > 0 ? pageTypes : ['pricing', 'changelog', 'terms'];
+      
+      let list = getLocalTargets();
+      const index = list.findIndex(t => cleanDomainStr(t.domain) === clean);
+      if (index >= 0) {
+        list[index].page_types = pages;
+      } else {
+        list.unshift({ domain: clean, page_types: pages });
+      }
+      saveLocalTargets(list);
+      return list;
+    }
+
+    function removeLocalTarget(domain) {
+      const clean = cleanDomainStr(domain);
+      if (!clean) return getLocalTargets();
+      let list = getLocalTargets().filter(t => cleanDomainStr(t.domain) !== clean);
+      saveLocalTargets(list);
+      return list;
+    }
+
+    function updateTargetsCountBadge(count) {
+      const tabStat = document.getElementById('tab-stat-targets');
+      if (tabStat) tabStat.innerText = count;
+      const badgeCount = document.getElementById('targets-badge-count');
+      if (badgeCount) badgeCount.innerText = `${count} Active`;
+    }
+
     async function init() {
       lucide.createIcons();
+      // Fast initial render from localStorage
+      const cached = getLocalTargets();
+      renderTargetsGrid(cached);
+
       await fetchStatus();
       await fetchTargets();
       await fetchReports();
@@ -502,98 +567,132 @@
         const res = await fetch('/api/status');
         const data = await res.json();
         
-        const count = data.stats.monitored_domains_count || 0;
-        document.getElementById('tab-stat-targets').innerText = count;
-        const badgeCount = document.getElementById('targets-badge-count');
-        if (badgeCount) badgeCount.innerText = `${count} Active`;
-        document.getElementById('tab-stat-reports').innerText = data.stats.reports_count || 0;
+        const localTargets = getLocalTargets();
+        const serverCount = (data.stats && data.stats.monitored_domains_count) || 0;
+        const count = Math.max(serverCount, localTargets.length);
+        
+        updateTargetsCountBadge(count);
+        document.getElementById('tab-stat-reports').innerText = (data.stats && data.stats.reports_count) || 0;
 
-        if (data.stats.is_running) {
+        if (data.stats && data.stats.is_running) {
           showLiveTracker();
         }
       } catch (err) {
         console.error('Status fetch error:', err);
+        const localTargets = getLocalTargets();
+        updateTargetsCountBadge(localTargets.length);
       }
     }
 
+    function renderTargetsGrid(targets) {
+      const grid = document.getElementById('targets-grid');
+      updateTargetsCountBadge(targets.length);
+
+      if (!targets || targets.length === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full p-8 rounded-xl bg-[#0D1322] border border-white/[0.06] text-center space-y-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto">
+              <i data-lucide="radar" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <p class="text-sm font-bold text-white">No Monitored Domains Added Yet</p>
+              <p class="text-xs text-slate-400 mt-0.5">Add competitor domains to automatically track pricing, product releases, and terms shifts.</p>
+            </div>
+            <button onclick="openAddModal()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-sm">
+              + Add First Domain
+            </button>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      grid.innerHTML = targets.map(t => {
+        const pageTypesJSON = JSON.stringify(t.page_types || ['pricing', 'changelog', 'terms']).replace(/"/g, '&quot;');
+        return `
+          <div class="p-4 rounded-xl bg-[#0D1322] border border-white/[0.08] hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-3 shadow-lg group">
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="relative flex h-2 w-2">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                  <span class="font-bold text-white text-sm font-mono tracking-tight">${t.domain}</span>
+                </div>
+                <a href="https://${t.domain}" target="_blank" rel="noopener noreferrer" class="text-slate-500 hover:text-emerald-400 transition-colors" title="Open website">
+                  <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                </a>
+              </div>
+
+              <div class="flex flex-wrap gap-1.5 pt-1">
+                ${(t.page_types || ['pricing', 'changelog', 'terms']).map(pt => `
+                  <span class="px-2 py-0.5 rounded-md bg-[#070A11] border border-white/[0.06] text-slate-300 text-[10px] font-mono flex items-center space-x-1">
+                    <span class="text-emerald-400">/</span><span>${pt}</span>
+                  </span>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between pt-2.5 border-t border-white/[0.04]">
+              <button onclick="triggerRunSingle('${t.domain}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 text-xs font-bold transition-all flex items-center space-x-1 border border-emerald-500/20 active:scale-95">
+                <i data-lucide="play" class="w-3 h-3 fill-current"></i>
+                <span>Analyze</span>
+              </button>
+              
+              <div class="flex items-center space-x-1">
+                <button onclick="openEditModal('${t.domain}', ${pageTypesJSON})" class="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-white/[0.05] transition-colors" title="Edit Domain">
+                  <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                </button>
+                <button onclick="deleteTarget('${t.domain}')" class="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors" title="Delete Domain">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+      lucide.createIcons();
+    }
+
     async function fetchTargets() {
+      let currentList = getLocalTargets();
+
       try {
         const res = await fetch('/api/targets');
-        const targets = await res.json();
-        const grid = document.getElementById('targets-grid');
-        
-        document.getElementById('tab-stat-targets').innerText = targets.length;
-        const badgeCount = document.getElementById('targets-badge-count');
-        if (badgeCount) badgeCount.innerText = `${targets.length} Active`;
+        if (res.ok) {
+          const serverTargets = await res.json();
+          if (Array.isArray(serverTargets)) {
+            const mergedMap = new Map();
+            
+            // Register server targets
+            serverTargets.forEach(t => {
+              const d = cleanDomainStr(t.domain);
+              if (d) mergedMap.set(d, { domain: d, page_types: t.page_types || ['pricing', 'changelog', 'terms'] });
+            });
+            
+            // Merge local targets and background sync any local-only targets to server
+            currentList.forEach(t => {
+              const d = cleanDomainStr(t.domain);
+              if (d && !mergedMap.has(d)) {
+                mergedMap.set(d, { domain: d, page_types: t.page_types || ['pricing', 'changelog', 'terms'] });
+                fetch('/api/targets', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ domain: d, page_types: t.page_types }),
+                }).catch(() => {});
+              }
+            });
 
-        if (targets.length === 0) {
-          grid.innerHTML = `
-            <div class="col-span-full p-8 rounded-xl bg-[#0D1322] border border-white/[0.06] text-center space-y-3">
-              <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto">
-                <i data-lucide="radar" class="w-5 h-5"></i>
-              </div>
-              <div>
-                <p class="text-sm font-bold text-white">No Monitored Domains Added Yet</p>
-                <p class="text-xs text-slate-400 mt-0.5">Add competitor domains to automatically track pricing, product releases, and terms shifts.</p>
-              </div>
-              <button onclick="openAddModal()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-sm">
-                + Add First Domain
-              </button>
-            </div>
-          `;
-          lucide.createIcons();
-          return;
+            currentList = Array.from(mergedMap.values());
+            saveLocalTargets(currentList);
+          }
         }
-
-        grid.innerHTML = targets.map(t => {
-          const pageTypesJSON = JSON.stringify(t.page_types).replace(/"/g, '&quot;');
-          return `
-            <div class="p-4 rounded-xl bg-[#0D1322] border border-white/[0.08] hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-3 shadow-lg group">
-              <div class="space-y-2">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center space-x-2">
-                    <span class="relative flex h-2 w-2">
-                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </span>
-                    <span class="font-bold text-white text-sm font-mono tracking-tight">${t.domain}</span>
-                  </div>
-                  <a href="https://${t.domain}" target="_blank" class="text-slate-500 hover:text-emerald-400 transition-colors" title="Open website">
-                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-                  </a>
-                </div>
-
-                <div class="flex flex-wrap gap-1.5 pt-1">
-                  ${t.page_types.map(pt => `
-                    <span class="px-2 py-0.5 rounded-md bg-[#070A11] border border-white/[0.06] text-slate-300 text-[10px] font-mono flex items-center space-x-1">
-                      <span class="text-emerald-400">/</span><span>${pt}</span>
-                    </span>
-                  `).join('')}
-                </div>
-              </div>
-
-              <div class="flex items-center justify-between pt-2.5 border-t border-white/[0.04]">
-                <button onclick="triggerRunSingle('${t.domain}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 text-xs font-bold transition-all flex items-center space-x-1 border border-emerald-500/20 active:scale-95">
-                  <i data-lucide="play" class="w-3 h-3 fill-current"></i>
-                  <span>Analyze</span>
-                </button>
-                
-                <div class="flex items-center space-x-1">
-                  <button onclick="openEditModal('${t.domain}', ${pageTypesJSON})" class="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-white/[0.05] transition-colors" title="Edit Domain">
-                    <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
-                  </button>
-                  <button onclick="deleteTarget('${t.domain}')" class="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors" title="Delete Domain">
-                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-          `;
-        }).join('');
-        lucide.createIcons();
       } catch (err) {
-        console.error('Failed to fetch targets:', err);
+        console.warn('Targets fetch from server failed, using local cache:', err);
       }
+
+      renderTargetsGrid(currentList);
     }
 
     async function fetchReports() {
@@ -653,7 +752,7 @@
         }
         const data = await res.json();
 
-        currentPayload.domain = data.domain || data.url.split('//')[1].split('/')[0];
+        currentPayload.domain = data.domain || cleanDomainStr(data.url);
         currentPayload.content = data.content;
 
         document.getElementById('scanner-result-box').classList.remove('hidden');
@@ -754,11 +853,21 @@
           launchesList.innerHTML = `<span class="text-slate-500">No product launches detected.</span>`;
         }
 
-        // Auto-marked as added
-        markAddToMonitorSuccess(analyzeData.domain);
+        // Auto-persist analyzed domain to Monitoring Domains
+        const analyzedDomain = cleanDomainStr(analyzeData.domain || url);
+        if (analyzedDomain) {
+          const updatedList = upsertLocalTarget(analyzedDomain, ['pricing', 'changelog', 'terms']);
+          renderTargetsGrid(updatedList);
+          markAddToMonitorSuccess(analyzedDomain);
+
+          fetch('/api/targets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain: analyzedDomain, page_types: ['pricing', 'changelog', 'terms'] }),
+          }).catch(() => {});
+        }
 
         await fetchReports();
-        await fetchTargets();
         await fetchStatus();
         lucide.createIcons();
       } catch (err) {
@@ -791,23 +900,29 @@
     }
 
     async function addCurrentScrapedDomain() {
-      if (!currentPayload.domain) return;
-      const domain = currentPayload.domain;
+      const rawDomain = currentPayload.domain || document.getElementById('dynamic-url-input').value.trim();
+      const domain = cleanDomainStr(rawDomain);
+      if (!domain) return showToast('Please enter or scrape a valid domain first', 'error');
+
+      const pageTypes = ['pricing', 'changelog', 'terms'];
+
+      // Instantly persist locally and update UI
+      const updatedList = upsertLocalTarget(domain, pageTypes);
+      renderTargetsGrid(updatedList);
+      markAddToMonitorSuccess(domain);
+      showToast(`✓ ${domain} added to Monitoring Domains!`, 'success');
+
+      // Sync to serverless API & Supabase in background
       try {
         await fetch('/api/targets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain: domain, page_types: ['pricing', 'changelog', 'terms'] }),
+          body: JSON.stringify({ domain: domain, page_types: pageTypes }),
         });
-        
-        markAddToMonitorSuccess(domain);
-        showToast(`✓ ${domain} added to Monitoring Domains!`, 'success');
-        
-        await fetchTargets();
-        await fetchStatus();
       } catch (err) {
-        showToast('Failed to add domain: ' + err, 'error');
+        console.warn('Background target sync error:', err);
       }
+      await fetchStatus();
     }
 
     // --- PIPELINE CONTROLS ---
@@ -924,10 +1039,12 @@
     }
 
     async function saveNewTarget() {
-      const domain = document.getElementById('modal-domain').value.trim();
-      if (!domain) return showToast('Please enter a domain or URL', 'error');
+      const rawDomain = document.getElementById('modal-domain').value.trim();
+      const domain = cleanDomainStr(rawDomain);
+      if (!domain) return showToast('Please enter a valid domain or URL', 'error');
 
-      const oldDomain = document.getElementById('modal-old-domain').value.trim();
+      const rawOldDomain = document.getElementById('modal-old-domain').value.trim();
+      const oldDomain = cleanDomainStr(rawOldDomain);
 
       const pageTypes = [];
       if (document.getElementById('check-pricing').checked) pageTypes.push('pricing');
@@ -938,19 +1055,28 @@
         return showToast('Please select at least one tracked page type', 'error');
       }
 
+      // If renaming, remove old domain from local list
+      if (oldDomain && oldDomain !== domain) {
+        removeLocalTarget(oldDomain);
+      }
+
+      // Upsert new/updated domain locally
+      const updatedList = upsertLocalTarget(domain, pageTypes);
+      renderTargetsGrid(updatedList);
+      closeAddModal();
+      showToast(oldDomain ? `✓ Updated ${domain} monitoring settings!` : `✓ Added ${domain} to Monitoring Domains!`, 'success');
+
+      // Sync to backend API & Supabase
       try {
         await fetch('/api/targets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ domain, old_domain: oldDomain, page_types: pageTypes }),
         });
-        closeAddModal();
-        showToast(oldDomain ? `✓ Updated ${domain} monitoring settings!` : `✓ Added ${domain} to Monitoring Domains!`, 'success');
-        await fetchTargets();
-        await fetchStatus();
       } catch (err) {
-        showToast('Failed to save target: ' + err, 'error');
+        console.warn('Target save server sync error:', err);
       }
+      await fetchStatus();
     }
 
     async function deleteFromModal() {
@@ -962,15 +1088,19 @@
     }
 
     async function deleteTarget(domain) {
-      if (!confirm(`Are you sure you want to remove ${domain} from active monitoring?`)) return;
+      const clean = cleanDomainStr(domain);
+      if (!confirm(`Are you sure you want to remove ${clean} from active monitoring?`)) return;
+
+      const updatedList = removeLocalTarget(clean);
+      renderTargetsGrid(updatedList);
+      showToast(`✓ Removed ${clean} from Monitoring Domains`);
+
       try {
-        await fetch(`/api/targets/${domain}`, { method: 'DELETE' });
-        showToast(`✓ Removed ${domain} from Monitoring Domains`);
-        await fetchTargets();
-        await fetchStatus();
+        await fetch(`/api/targets/${clean}`, { method: 'DELETE' });
       } catch (err) {
-        showToast('Failed to delete domain: ' + err, 'error');
+        console.warn('Target delete server sync error:', err);
       }
+      await fetchStatus();
     }
 
     document.addEventListener('DOMContentLoaded', init);

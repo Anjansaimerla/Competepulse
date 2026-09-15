@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+from pathlib import Path
 from typing import Any
 
 from .chunking import prepare_chunks
@@ -231,8 +233,19 @@ def build_json_diff_payload(diffs: list[PageDiff], max_chars_per_chunk: int = 12
     return json.dumps(payload, indent=2)
 
 
+def _get_candidate_target_paths(settings: Settings) -> list[Path]:
+    paths = []
+    p = Path(settings.targets_path)
+    paths.append(p)
+    if str(settings.targets_path) in ("targets.json", "targets.yaml") or os.environ.get("VERCEL"):
+        tmp_p = Path("/tmp/targets.json")
+        if tmp_p not in paths:
+            paths.append(tmp_p)
+    return paths
+
+
 def save_monitored_target(settings: Settings, domain: str, page_types: list[str] | None = None) -> bool:
-    """Save or update a competitor target in Supabase (and local targets.json)."""
+    """Save or update a competitor target in Supabase (and local/tmp targets.json)."""
     clean_domain = domain.split("//")[-1].split("/")[0].lower().strip()
     if not clean_domain:
         return False
@@ -251,26 +264,26 @@ def save_monitored_target(settings: Settings, domain: str, page_types: list[str]
         except Exception as exc:
             logger.debug("Could not persist target to Supabase: %s", exc)
 
-    try:
-        from pathlib import Path
-        targets_path = Path(settings.targets_path)
-        existing = []
-        if targets_path.exists():
-            try:
-                existing = json.loads(targets_path.read_text(encoding="utf-8"))
-            except Exception:
-                existing = []
-        updated = False
-        for item in existing:
-            if item.get("domain") == clean_domain:
-                item["page_types"] = pages
-                updated = True
-                break
-        if not updated:
-            existing.append({"domain": clean_domain, "page_types": pages})
-        targets_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    for p in _get_candidate_target_paths(settings):
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            existing = []
+            if p.exists():
+                try:
+                    existing = json.loads(p.read_text(encoding="utf-8"))
+                except Exception:
+                    existing = []
+            updated = False
+            for item in existing:
+                if item.get("domain") == clean_domain:
+                    item["page_types"] = pages
+                    updated = True
+                    break
+            if not updated:
+                existing.append({"domain": clean_domain, "page_types": pages})
+            p.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        except Exception:
+            pass
 
     return True
 
@@ -278,6 +291,7 @@ def save_monitored_target(settings: Settings, domain: str, page_types: list[str]
 def get_monitored_targets(settings: Settings) -> list[Target]:
     """Retrieve all active monitored competitor targets from Supabase and local targets.json."""
     from .state import Target
+
     targets_dict: dict[str, list[str]] = {}
 
     # 1. Try Supabase registry
@@ -293,20 +307,19 @@ def get_monitored_targets(settings: Settings) -> list[Target]:
         except Exception as exc:
             logger.debug("Could not fetch targets from Supabase: %s", exc)
 
-    # 2. Local targets.json
-    try:
-        from pathlib import Path
-        targets_path = Path(settings.targets_path)
-        if targets_path.exists():
-            local_list = json.loads(targets_path.read_text(encoding="utf-8"))
-            if isinstance(local_list, list):
-                for item in local_list:
-                    if isinstance(item, dict) and item.get("domain"):
-                        d = str(item["domain"]).lower().strip()
-                        if d not in targets_dict:
-                            targets_dict[d] = item.get("page_types") or ["pricing", "changelog", "terms"]
-    except Exception:
-        pass
+    # 2. Local candidate paths (targets.json and /tmp/targets.json)
+    for p in _get_candidate_target_paths(settings):
+        try:
+            if p.exists():
+                local_list = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(local_list, list):
+                    for item in local_list:
+                        if isinstance(item, dict) and item.get("domain"):
+                            d = str(item["domain"]).lower().strip()
+                            if d and d not in targets_dict:
+                                targets_dict[d] = item.get("page_types") or ["pricing", "changelog", "terms"]
+        except Exception:
+            pass
 
     results: list[Target] = []
     for dom, ptypes in targets_dict.items():
@@ -320,7 +333,7 @@ def get_monitored_targets(settings: Settings) -> list[Target]:
 
 
 def delete_monitored_target(settings: Settings, domain: str) -> bool:
-    """Deactivate target in Supabase and remove from local targets.json."""
+    """Deactivate target in Supabase and remove from local/tmp targets.json."""
     clean_domain = domain.split("//")[-1].split("/")[0].lower().strip()
     if settings.has_vector_store():
         try:
@@ -329,13 +342,12 @@ def delete_monitored_target(settings: Settings, domain: str) -> bool:
         except Exception as exc:
             logger.debug("Failed to deactivate target in Supabase: %s", exc)
 
-    try:
-        from pathlib import Path
-        targets_path = Path(settings.targets_path)
-        if targets_path.exists():
-            existing = json.loads(targets_path.read_text(encoding="utf-8"))
-            filtered = [item for item in existing if item.get("domain") != clean_domain]
-            targets_path.write_text(json.dumps(filtered, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    for p in _get_candidate_target_paths(settings):
+        try:
+            if p.exists():
+                existing = json.loads(p.read_text(encoding="utf-8"))
+                filtered = [item for item in existing if item.get("domain") != clean_domain]
+                p.write_text(json.dumps(filtered, indent=2), encoding="utf-8")
+        except Exception:
+            pass
     return True
