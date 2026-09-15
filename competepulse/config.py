@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     slack_channel_id: str | None = None
     sendgrid_api_key: str | None = None
     sender_email: str | None = None
-    recipient_emails: list[str] | str = Field(default_factory=list)
+    recipient_emails_raw: str | list[str] | None = Field(default=None, alias="recipient_emails")
 
     # Behavior
     targets_path: Path = DEFAULT_TARGETS_PATH
@@ -54,13 +54,15 @@ class Settings(BaseSettings):
     distribution_dry_run: bool = False
     reports_dir: Path = PROJECT_ROOT / "reports"
 
-    @field_validator("recipient_emails", mode="before")
-    @classmethod
-    def _split_recipients(cls, value: object) -> list[str]:
-        if not value:
+    @property
+    def recipient_emails(self) -> list[str]:
+        val = self.recipient_emails_raw
+        if not val:
             return []
-        if isinstance(value, str):
-            val_str = value.strip()
+        if isinstance(val, (list, tuple)):
+            return [str(e).strip() for e in val if str(e).strip()]
+        if isinstance(val, str):
+            val_str = val.strip()
             if not val_str:
                 return []
             if val_str.startswith("[") and val_str.endswith("]"):
@@ -72,8 +74,6 @@ class Settings(BaseSettings):
                 except Exception:
                     pass
             return [email.strip() for email in val_str.split(",") if email.strip()]
-        if isinstance(value, (list, tuple)):
-            return [str(e).strip() for e in value if str(e).strip()]
         return []
 
     def has_vector_store(self) -> bool:
