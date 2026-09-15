@@ -110,8 +110,8 @@
         <span>Live Scanner</span>
       </button>
       <button onclick="switchTab('targets')" id="tab-btn-targets" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.04] transition-all">
-        <i data-lucide="crosshair" class="w-3.5 h-3.5"></i>
-        <span>Competitor Targets (<span id="tab-stat-targets">0</span>)</span>
+        <i data-lucide="radar" class="w-3.5 h-3.5"></i>
+        <span>Monitoring Domains (<span id="tab-stat-targets">0</span>)</span>
       </button>
       <button onclick="switchTab('reports')" id="tab-btn-reports" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/[0.04] transition-all">
         <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
@@ -224,9 +224,9 @@
               <button 
                 onclick="addCurrentScrapedDomain()" 
                 id="res-btn-add-target" 
-                class="px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 text-xs font-semibold flex items-center space-x-1.5 border border-white/[0.08]"
+                class="px-3.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 text-xs font-semibold flex items-center space-x-1.5 border border-white/[0.08] transition-all"
               >
-                <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                <i data-lucide="plus" class="w-3.5 h-3.5 text-emerald-400"></i>
                 <span>Add Domain to Monitoring</span>
               </button>
 
@@ -290,22 +290,30 @@
     </div>
 
     <!-- ========================================== -->
-    <!-- TAB 2: COMPETITOR TARGETS                  -->
+    <!-- TAB 2: MONITORING DOMAINS                  -->
     <!-- ========================================== -->
     <div id="view-targets" class="hidden space-y-4">
-      <div class="flex items-center justify-between pb-2 border-b border-white/[0.06]">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.06]">
         <div>
-          <h2 class="text-base font-bold text-white">Monitored Competitor Domains</h2>
-          <p class="text-xs text-slate-400">Scheduled targets polled for structural diffs and price changes.</p>
+          <div class="flex items-center space-x-2">
+            <h2 class="text-base font-bold text-white">Active Monitoring Domains</h2>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono" id="targets-badge-count">
+              0 Active
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Autonomous cloud targets synced with Supabase for scheduled weekly analysis.</p>
         </div>
-        <button onclick="openAddModal()" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-colors shadow-sm">
-          <i data-lucide="plus" class="w-3.5 h-3.5"></i>
-          <span>Add Domain</span>
-        </button>
+        
+        <div class="flex items-center space-x-2">
+          <button onclick="openAddModal()" class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition-colors shadow-sm active:scale-95">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>Add Domain</span>
+          </button>
+        </div>
       </div>
 
       <!-- Target Cards Grid -->
-      <div id="targets-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div id="targets-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
         <!-- Populated via JS -->
       </div>
     </div>
@@ -353,44 +361,81 @@
 
   </main>
 
-  <!-- ADD COMPETITOR MODAL -->
+  <!-- ADD / EDIT COMPETITOR MODAL -->
   <div id="add-modal" class="fixed inset-0 z-50 bg-[#070A11]/80 backdrop-blur-md hidden flex items-center justify-center p-4">
     <div class="bg-[#0D1322] border border-white/[0.1] rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-      <div class="flex items-center justify-between">
-        <h3 class="text-base font-bold text-white">Add Monitored Domain</h3>
-        <button onclick="closeAddModal()" class="text-slate-400 hover:text-white p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+      <div class="flex items-center justify-between border-b border-white/[0.06] pb-3">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="radar" class="w-4 h-4 text-emerald-400"></i>
+          <h3 id="modal-title" class="text-base font-bold text-white">Add Monitored Domain</h3>
+        </div>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-white p-1 rounded-md hover:bg-white/[0.05]"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
 
-      <div class="space-y-3 text-xs">
+      <!-- Hidden field for editing existing domain -->
+      <input type="hidden" id="modal-old-domain" value="">
+
+      <div class="space-y-4 text-xs">
         <div>
-          <label class="block font-semibold text-slate-300 uppercase tracking-wider mb-1">Domain</label>
-          <input type="text" id="modal-domain" placeholder="e.g. linear.app or posthog.com" class="w-full px-3 py-2 rounded-lg bg-[#070A11] border border-white/[0.1] text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono">
+          <label class="block font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Domain or Website URL</label>
+          <div class="relative">
+            <input 
+              type="text" 
+              id="modal-domain" 
+              placeholder="e.g. pocketalk.com or linear.app" 
+              class="w-full px-3.5 py-2.5 rounded-xl bg-[#070A11] border border-white/[0.1] text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono text-xs"
+            >
+          </div>
+          <p class="text-[11px] text-slate-500 mt-1">Full URLs (https://...) are automatically parsed to the base domain.</p>
         </div>
 
         <div>
           <label class="block font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Tracked Page Types</label>
-          <div class="space-y-1.5">
-            <label class="flex items-center space-x-2 text-slate-300 cursor-pointer">
-              <input type="checkbox" id="check-pricing" checked class="w-3.5 h-3.5 rounded bg-[#070A11] border-slate-700 text-emerald-500 focus:ring-0">
-              <span><b>/pricing</b> — Price points & tier gating</span>
+          <div class="space-y-2 p-3 rounded-xl bg-[#070A11] border border-white/[0.06]">
+            <label class="flex items-center space-x-2.5 text-slate-300 cursor-pointer">
+              <input type="checkbox" id="check-pricing" checked class="w-4 h-4 rounded bg-[#0D1322] border-slate-700 text-emerald-500 focus:ring-0">
+              <div class="flex flex-col">
+                <span class="font-bold text-white">/pricing</span>
+                <span class="text-[10px] text-slate-400">Pricing points, plan tiers, add-on features</span>
+              </div>
             </label>
-            <label class="flex items-center space-x-2 text-slate-300 cursor-pointer">
-              <input type="checkbox" id="check-changelog" checked class="w-3.5 h-3.5 rounded bg-[#070A11] border-slate-700 text-emerald-500 focus:ring-0">
-              <span><b>/blog & /changelog</b> — New features & releases</span>
+            <label class="flex items-center space-x-2.5 text-slate-300 cursor-pointer">
+              <input type="checkbox" id="check-changelog" checked class="w-4 h-4 rounded bg-[#0D1322] border-slate-700 text-emerald-500 focus:ring-0">
+              <div class="flex flex-col">
+                <span class="font-bold text-white">/changelog & /blog</span>
+                <span class="text-[10px] text-slate-400">New product launches, updates, feature releases</span>
+              </div>
             </label>
-            <label class="flex items-center space-x-2 text-slate-300 cursor-pointer">
-              <input type="checkbox" id="check-terms" checked class="w-3.5 h-3.5 rounded bg-[#070A11] border-slate-700 text-emerald-500 focus:ring-0">
-              <span><b>/terms & /privacy</b> — Legal shifts</span>
+            <label class="flex items-center space-x-2.5 text-slate-300 cursor-pointer">
+              <input type="checkbox" id="check-terms" checked class="w-4 h-4 rounded bg-[#0D1322] border-slate-700 text-emerald-500 focus:ring-0">
+              <div class="flex flex-col">
+                <span class="font-bold text-white">/terms & /privacy</span>
+                <span class="text-[10px] text-slate-400">Legal policies, GDPR, privacy modifications</span>
+              </div>
             </label>
           </div>
         </div>
       </div>
 
-      <div class="flex justify-end space-x-2 pt-2">
-        <button onclick="closeAddModal()" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs font-semibold">Cancel</button>
-        <button onclick="saveNewTarget()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-sm">Save Target</button>
+      <div class="flex items-center justify-between pt-3 border-t border-white/[0.06]">
+        <button id="modal-delete-btn" onclick="deleteFromModal()" class="hidden text-rose-400 hover:text-rose-300 text-xs font-semibold flex items-center space-x-1">
+          <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          <span>Delete Domain</span>
+        </button>
+        <div class="flex space-x-2 ml-auto">
+          <button onclick="closeAddModal()" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs font-semibold">Cancel</button>
+          <button onclick="saveNewTarget()" id="modal-save-btn" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-sm transition-all active:scale-95">Save Domain</button>
+        </div>
       </div>
     </div>
+  </div>
+
+  <!-- FLOATING TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 pointer-events-none transition-all duration-300 flex items-center space-x-3 px-4 py-3 rounded-xl bg-[#0D1322] border border-emerald-500/40 shadow-2xl text-xs font-semibold text-white">
+    <div id="toast-icon" class="p-1 rounded-md bg-emerald-500/20 text-emerald-400">
+      <i data-lucide="check-circle" class="w-4 h-4"></i>
+    </div>
+    <span id="toast-message">Notification message</span>
   </div>
 
   <!-- CLIENT-SIDE SCRIPT -->
@@ -405,6 +450,28 @@
       await fetchTargets();
       await fetchReports();
       startPolling();
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toast-message');
+      const toastIcon = document.getElementById('toast-icon');
+
+      toastMsg.innerText = message;
+      if (type === 'error') {
+        toast.className = "fixed bottom-5 right-5 z-50 transform translate-y-0 opacity-100 transition-all duration-300 flex items-center space-x-3 px-4 py-3 rounded-xl bg-[#0D1322] border border-rose-500/40 shadow-2xl text-xs font-semibold text-white";
+        toastIcon.className = "p-1 rounded-md bg-rose-500/20 text-rose-400";
+        toastIcon.innerHTML = `<i data-lucide="alert-triangle" class="w-4 h-4"></i>`;
+      } else {
+        toast.className = "fixed bottom-5 right-5 z-50 transform translate-y-0 opacity-100 transition-all duration-300 flex items-center space-x-3 px-4 py-3 rounded-xl bg-[#0D1322] border border-emerald-500/40 shadow-2xl text-xs font-semibold text-white";
+        toastIcon.className = "p-1 rounded-md bg-emerald-500/20 text-emerald-400";
+        toastIcon.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i>`;
+      }
+      lucide.createIcons();
+
+      setTimeout(() => {
+        toast.className = "fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 pointer-events-none transition-all duration-300 flex items-center space-x-3 px-4 py-3 rounded-xl bg-[#0D1322] border border-emerald-500/40 shadow-2xl text-xs font-semibold text-white";
+      }, 3500);
     }
 
     function switchTab(tab) {
@@ -435,8 +502,11 @@
         const res = await fetch('/api/status');
         const data = await res.json();
         
-        document.getElementById('tab-stat-targets').innerText = data.stats.monitored_domains_count;
-        document.getElementById('tab-stat-reports').innerText = data.stats.reports_count;
+        const count = data.stats.monitored_domains_count || 0;
+        document.getElementById('tab-stat-targets').innerText = count;
+        const badgeCount = document.getElementById('targets-badge-count');
+        if (badgeCount) badgeCount.innerText = `${count} Active`;
+        document.getElementById('tab-stat-reports').innerText = data.stats.reports_count || 0;
 
         if (data.stats.is_running) {
           showLiveTracker();
@@ -452,40 +522,74 @@
         const targets = await res.json();
         const grid = document.getElementById('targets-grid');
         
+        document.getElementById('tab-stat-targets').innerText = targets.length;
+        const badgeCount = document.getElementById('targets-badge-count');
+        if (badgeCount) badgeCount.innerText = `${targets.length} Active`;
+
         if (targets.length === 0) {
           grid.innerHTML = `
-            <div class="col-span-full p-8 rounded-xl bg-[#0D1322] border border-white/[0.06] text-center space-y-2">
-              <i data-lucide="crosshair" class="w-6 h-6 text-slate-500 mx-auto"></i>
-              <p class="text-xs text-slate-400">No monitored domains registered yet.</p>
-              <button onclick="openAddModal()" class="px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">Add first domain</button>
+            <div class="col-span-full p-8 rounded-xl bg-[#0D1322] border border-white/[0.06] text-center space-y-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto">
+                <i data-lucide="radar" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <p class="text-sm font-bold text-white">No Monitored Domains Added Yet</p>
+                <p class="text-xs text-slate-400 mt-0.5">Add competitor domains to automatically track pricing, product releases, and terms shifts.</p>
+              </div>
+              <button onclick="openAddModal()" class="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all shadow-sm">
+                + Add First Domain
+              </button>
             </div>
           `;
           lucide.createIcons();
           return;
         }
 
-        grid.innerHTML = targets.map(t => `
-          <div class="p-4 rounded-xl bg-[#0D1322] border border-white/[0.08] hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-3">
-            <div class="space-y-1">
-              <div class="flex items-center justify-between">
-                <span class="font-bold text-white text-sm font-mono">${t.domain}</span>
-                <a href="https://${t.domain}" target="_blank" class="text-slate-500 hover:text-slate-300"><i data-lucide="external-link" class="w-3.5 h-3.5"></i></a>
+        grid.innerHTML = targets.map(t => {
+          const pageTypesJSON = JSON.stringify(t.page_types).replace(/"/g, '&quot;');
+          return `
+            <div class="p-4 rounded-xl bg-[#0D1322] border border-white/[0.08] hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-3 shadow-lg group">
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <span class="relative flex h-2 w-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span class="font-bold text-white text-sm font-mono tracking-tight">${t.domain}</span>
+                  </div>
+                  <a href="https://${t.domain}" target="_blank" class="text-slate-500 hover:text-emerald-400 transition-colors" title="Open website">
+                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                  </a>
+                </div>
+
+                <div class="flex flex-wrap gap-1.5 pt-1">
+                  ${t.page_types.map(pt => `
+                    <span class="px-2 py-0.5 rounded-md bg-[#070A11] border border-white/[0.06] text-slate-300 text-[10px] font-mono flex items-center space-x-1">
+                      <span class="text-emerald-400">/</span><span>${pt}</span>
+                    </span>
+                  `).join('')}
+                </div>
               </div>
-              <div class="flex flex-wrap gap-1 pt-1">
-                ${t.page_types.map(pt => `<span class="px-2 py-0.5 rounded bg-[#070A11] border border-white/[0.06] text-slate-300 text-[10px] font-mono">/${pt}</span>`).join('')}
+
+              <div class="flex items-center justify-between pt-2.5 border-t border-white/[0.04]">
+                <button onclick="triggerRunSingle('${t.domain}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-slate-950 text-xs font-bold transition-all flex items-center space-x-1 border border-emerald-500/20 active:scale-95">
+                  <i data-lucide="play" class="w-3 h-3 fill-current"></i>
+                  <span>Analyze</span>
+                </button>
+                
+                <div class="flex items-center space-x-1">
+                  <button onclick="openEditModal('${t.domain}', ${pageTypesJSON})" class="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-white/[0.05] transition-colors" title="Edit Domain">
+                    <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="deleteTarget('${t.domain}')" class="p-1.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors" title="Delete Domain">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
               </div>
             </div>
-            <div class="flex items-center justify-between pt-2 border-t border-white/[0.04]">
-              <button onclick="triggerRunSingle('${t.domain}')" class="px-2.5 py-1 rounded bg-white/[0.05] hover:bg-emerald-500 hover:text-slate-950 text-slate-200 text-xs font-bold transition-all flex items-center space-x-1">
-                <i data-lucide="play" class="w-3 h-3 fill-current"></i>
-                <span>Analyze Now</span>
-              </button>
-              <button onclick="deleteTarget('${t.domain}')" class="p-1 text-slate-500 hover:text-rose-400 transition-colors">
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-              </button>
-            </div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
         lucide.createIcons();
       } catch (err) {
         console.error('Failed to fetch targets:', err);
@@ -531,7 +635,7 @@
     async function performDynamicScrape() {
       const input = document.getElementById('dynamic-url-input');
       const url = input.value.trim();
-      if (!url) return alert('Please enter a website URL');
+      if (!url) return showToast('Please enter a website URL', 'error');
 
       const btn = document.getElementById('btn-instant-scrape');
       btn.disabled = true;
@@ -549,7 +653,7 @@
         }
         const data = await res.json();
 
-        currentPayload.domain = data.url.split('//')[1].split('/')[0];
+        currentPayload.domain = data.domain || data.url.split('//')[1].split('/')[0];
         currentPayload.content = data.content;
 
         document.getElementById('scanner-result-box').classList.remove('hidden');
@@ -560,9 +664,14 @@
         document.getElementById('res-ai-section').classList.add('hidden');
         document.getElementById('res-download-pdf-btn').classList.add('hidden');
         
+        // Reset Add to Monitor button
+        resetAddToMonitorButton();
+
+        await fetchTargets();
+        await fetchStatus();
         lucide.createIcons();
       } catch (err) {
-        alert(err.message || err);
+        showToast(err.message || err, 'error');
       } finally {
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="code" class="w-3.5 h-3.5 text-emerald-400"></i><span>Scrape</span>`;
@@ -573,7 +682,7 @@
     async function performDynamicAnalyze() {
       const input = document.getElementById('dynamic-url-input');
       const url = input.value.trim();
-      if (!url) return alert('Please enter a website URL');
+      if (!url) return showToast('Please enter a website URL', 'error');
 
       const btn = document.getElementById('btn-instant-analyze');
       btn.disabled = true;
@@ -597,7 +706,7 @@
         const analyzeRes = await fetch('/api/analyze-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: url, content: content }),
+          body: JSON.stringify({ url: url, content: content, domain: scrapeData.domain }),
         });
         if (!analyzeRes.ok) {
           const errText = await analyzeRes.text();
@@ -645,11 +754,15 @@
           launchesList.innerHTML = `<span class="text-slate-500">No product launches detected.</span>`;
         }
 
+        // Auto-marked as added
+        markAddToMonitorSuccess(analyzeData.domain);
+
         await fetchReports();
+        await fetchTargets();
         await fetchStatus();
         lucide.createIcons();
       } catch (err) {
-        alert('Analysis failed: ' + err);
+        showToast('Analysis failed: ' + err, 'error');
       } finally {
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5 fill-current"></i><span>DeepSeek Analysis</span>`;
@@ -659,22 +772,41 @@
 
     function copyExtractedContent() {
       navigator.clipboard.writeText(currentPayload.content);
-      alert('Markdown copied to clipboard!');
+      showToast('Markdown copied to clipboard!');
+    }
+
+    function resetAddToMonitorButton() {
+      const btn = document.getElementById('res-btn-add-target');
+      btn.className = "px-3.5 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-slate-300 text-xs font-semibold flex items-center space-x-1.5 border border-white/[0.08] transition-all";
+      btn.innerHTML = `<i data-lucide="plus" class="w-3.5 h-3.5 text-emerald-400"></i><span>Add Domain to Monitoring</span>`;
+      btn.disabled = false;
+      lucide.createIcons();
+    }
+
+    function markAddToMonitorSuccess(domain) {
+      const btn = document.getElementById('res-btn-add-target');
+      btn.className = "px-3.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center space-x-1.5 transition-all";
+      btn.innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-400"></i><span>✓ Monitored Domain</span>`;
+      lucide.createIcons();
     }
 
     async function addCurrentScrapedDomain() {
       if (!currentPayload.domain) return;
+      const domain = currentPayload.domain;
       try {
         await fetch('/api/targets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain: currentPayload.domain, page_types: ['pricing', 'changelog', 'terms'] }),
+          body: JSON.stringify({ domain: domain, page_types: ['pricing', 'changelog', 'terms'] }),
         });
-        alert(`Added ${currentPayload.domain} to permanent monitoring!`);
+        
+        markAddToMonitorSuccess(domain);
+        showToast(`✓ ${domain} added to Monitoring Domains!`, 'success');
+        
         await fetchTargets();
         await fetchStatus();
       } catch (err) {
-        alert('Failed to add target: ' + err);
+        showToast('Failed to add domain: ' + err, 'error');
       }
     }
 
@@ -686,6 +818,7 @@
       try {
         await fetch('/api/run', { method: 'POST' });
         showLiveTracker();
+        showToast('Autonomous pipeline triggered for all monitoring domains!');
       } catch (err) {
         console.error('Run failed:', err);
       } finally {
@@ -701,6 +834,7 @@
           body: JSON.stringify({ domain: domain }),
         });
         showLiveTracker();
+        showToast(`Started pipeline analysis for ${domain}...`);
       } catch (err) {
         console.error('Single run failed:', err);
       }
@@ -750,9 +884,39 @@
       document.getElementById('console-logs').innerHTML = `<div class="text-slate-500">// Console cleared.</div>`;
     }
 
+    // --- MODAL LOGIC FOR ADD / EDIT ---
+
     function openAddModal() {
+      document.getElementById('modal-title').innerText = "Add Monitored Domain";
+      document.getElementById('modal-old-domain').value = "";
+      document.getElementById('modal-domain').value = "";
+      document.getElementById('modal-save-btn').innerText = "Save Domain";
+      document.getElementById('modal-delete-btn').classList.add('hidden');
+      
+      document.getElementById('check-pricing').checked = true;
+      document.getElementById('check-changelog').checked = true;
+      document.getElementById('check-terms').checked = true;
+      
       document.getElementById('add-modal').classList.remove('hidden');
       document.getElementById('modal-domain').focus();
+      lucide.createIcons();
+    }
+
+    function openEditModal(domain, pageTypes) {
+      document.getElementById('modal-title').innerText = "Edit Monitored Domain";
+      document.getElementById('modal-old-domain').value = domain;
+      document.getElementById('modal-domain').value = domain;
+      document.getElementById('modal-save-btn').innerText = "Update Domain";
+      document.getElementById('modal-delete-btn').classList.remove('hidden');
+
+      const pages = Array.isArray(pageTypes) ? pageTypes : ['pricing', 'changelog', 'terms'];
+      document.getElementById('check-pricing').checked = pages.includes('pricing');
+      document.getElementById('check-changelog').checked = pages.includes('changelog');
+      document.getElementById('check-terms').checked = pages.includes('terms');
+
+      document.getElementById('add-modal').classList.remove('hidden');
+      document.getElementById('modal-domain').focus();
+      lucide.createIcons();
     }
 
     function closeAddModal() {
@@ -761,36 +925,51 @@
 
     async function saveNewTarget() {
       const domain = document.getElementById('modal-domain').value.trim();
-      if (!domain) return alert('Please enter a domain');
+      if (!domain) return showToast('Please enter a domain or URL', 'error');
+
+      const oldDomain = document.getElementById('modal-old-domain').value.trim();
 
       const pageTypes = [];
       if (document.getElementById('check-pricing').checked) pageTypes.push('pricing');
       if (document.getElementById('check-changelog').checked) pageTypes.push('changelog');
       if (document.getElementById('check-terms').checked) pageTypes.push('terms');
 
+      if (pageTypes.length === 0) {
+        return showToast('Please select at least one tracked page type', 'error');
+      }
+
       try {
         await fetch('/api/targets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain, page_types: pageTypes }),
+          body: JSON.stringify({ domain, old_domain: oldDomain, page_types: pageTypes }),
         });
         closeAddModal();
-        document.getElementById('modal-domain').value = '';
+        showToast(oldDomain ? `✓ Updated ${domain} monitoring settings!` : `✓ Added ${domain} to Monitoring Domains!`, 'success');
         await fetchTargets();
         await fetchStatus();
       } catch (err) {
-        alert('Failed to save target: ' + err);
+        showToast('Failed to save target: ' + err, 'error');
+      }
+    }
+
+    async function deleteFromModal() {
+      const oldDomain = document.getElementById('modal-old-domain').value.trim();
+      if (oldDomain) {
+        closeAddModal();
+        await deleteTarget(oldDomain);
       }
     }
 
     async function deleteTarget(domain) {
-      if (!confirm(`Remove ${domain} from active monitoring?`)) return;
+      if (!confirm(`Are you sure you want to remove ${domain} from active monitoring?`)) return;
       try {
         await fetch(`/api/targets/${domain}`, { method: 'DELETE' });
+        showToast(`✓ Removed ${domain} from Monitoring Domains`);
         await fetchTargets();
         await fetchStatus();
       } catch (err) {
-        alert('Failed to delete target: ' + err);
+        showToast('Failed to delete domain: ' + err, 'error');
       }
     }
 

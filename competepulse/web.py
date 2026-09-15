@@ -164,6 +164,12 @@ async def handle_add_target(request: web.Request) -> web.Response:
     # Clean domain if full URL was pasted
     domain = domain.split("//")[-1].split("/")[0]
 
+    old_domain = str(data.get("old_domain", "")).strip().lower()
+    if old_domain:
+        old_domain = old_domain.split("//")[-1].split("/")[0]
+        if old_domain and old_domain != domain:
+            delete_monitored_target(settings, old_domain)
+
     raw_page_types = data.get("page_types") or ["pricing", "changelog", "terms"]
     valid_pages = [p for p in raw_page_types if p in PAGE_TYPES]
     if not valid_pages:
@@ -392,6 +398,7 @@ def create_app() -> web.Application:
     app.router.add_get("/api/status", handle_status)
     app.router.add_get("/api/targets", handle_get_targets)
     app.router.add_post("/api/targets", handle_add_target)
+    app.router.add_put("/api/targets", handle_add_target)
     app.router.add_delete("/api/targets/{domain}", handle_delete_target)
     app.router.add_post("/api/run", handle_trigger_run)
     app.router.add_get("/api/run/status", handle_run_status)

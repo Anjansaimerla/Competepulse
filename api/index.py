@@ -257,6 +257,12 @@ class handler(BaseHTTPRequestHandler):
                     return self._send_json({"error": "Domain is required"}, status=400)
                 domain = domain.split("//")[-1].split("/")[0]
 
+                old_domain = str(data.get("old_domain", "")).strip().lower()
+                if old_domain:
+                    old_domain = old_domain.split("//")[-1].split("/")[0]
+                    if old_domain and old_domain != domain:
+                        delete_monitored_target(settings, old_domain)
+
                 raw_pages = data.get("page_types") or ["pricing", "changelog", "terms"]
                 valid_pages = [p for p in raw_pages if p in PAGE_TYPES] or ["pricing", "changelog", "terms"]
 
@@ -267,6 +273,9 @@ class handler(BaseHTTPRequestHandler):
         except Exception as exc:
             traceback.print_exc()
             self._send_json({"error": f"Internal server error: {exc}"}, status=500)
+
+    def do_PUT(self) -> None:
+        return self.do_POST()
 
     def do_DELETE(self) -> None:
         try:
