@@ -3,7 +3,16 @@ name: Competepulse Weekly Run
 on:
   schedule:
     - cron: '0 6 * * 1' # Every Monday at 06:00 UTC
-  workflow_dispatch: {} # Manual trigger button for testing
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: 'Target competitor domain to check on-demand (e.g. timekettle.co)'
+        required: false
+        default: ''
+      pages:
+        description: 'Comma-separated page types'
+        required: false
+        default: 'pricing,changelog,terms'
 
 jobs:
   run-agent:
@@ -42,4 +51,9 @@ jobs:
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL || vars.SENDER_EMAIL }}
           RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS || vars.RECIPIENT_EMAILS }}
           COMPETEPULSE_TARGETS: targets.json
-        run: python main.py
+        run: |
+          if [ -n "${{ github.event.inputs.domain }}" ]; then
+            python main.py --domain "${{ github.event.inputs.domain }}" --pages "${{ github.event.inputs.pages || 'pricing,changelog,terms' }}"
+          else
+            python main.py
+          fi

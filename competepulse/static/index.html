@@ -543,6 +543,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: url }),
         });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Scrape failed (${res.status}): ${errText.slice(0, 150)}`);
+        }
         const data = await res.json();
 
         currentPayload.domain = data.url.split('//')[1].split('/')[0];
@@ -558,7 +562,7 @@
         
         lucide.createIcons();
       } catch (err) {
-        alert('Scrape request failed: ' + err);
+        alert(err.message || err);
       } finally {
         btn.disabled = false;
         btn.innerHTML = `<i data-lucide="code" class="w-3.5 h-3.5 text-emerald-400"></i><span>Scrape</span>`;
@@ -582,6 +586,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: url }),
         });
+        if (!scrapeRes.ok) {
+          const errText = await scrapeRes.text();
+          throw new Error(`Scrape failed (${scrapeRes.status}): ${errText.slice(0, 150)}`);
+        }
         const scrapeData = await scrapeRes.json();
         const content = scrapeData.content || `Content for ${url}`;
 
@@ -591,6 +599,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ url: url, content: content }),
         });
+        if (!analyzeRes.ok) {
+          const errText = await analyzeRes.text();
+          throw new Error(`Analysis failed (${analyzeRes.status}): ${errText.slice(0, 150)}`);
+        }
         const analyzeData = await analyzeRes.json();
 
         currentPayload.domain = analyzeData.domain;
