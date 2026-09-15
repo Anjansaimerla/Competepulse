@@ -200,6 +200,18 @@
                 </button>
               </div>
             </div>
+
+            <!-- Optional Auto-Monitor Cloud Toggle -->
+            <div class="pt-3 flex items-center justify-center">
+              <label class="inline-flex items-center cursor-pointer select-none bg-[#070A11] px-3.5 py-1.5 rounded-full border border-white/[0.08] hover:border-emerald-500/40 transition-colors">
+                <input type="checkbox" id="toggle-auto-monitor" class="sr-only peer">
+                <div class="relative w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                <span class="ml-2.5 text-[11px] text-slate-300 flex items-center space-x-1.5 font-medium">
+                  <i data-lucide="cloud" class="w-3.5 h-3.5 text-emerald-400"></i>
+                  <span>Auto-add domain to Monitoring & Cloud Runner</span>
+                </span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -781,6 +793,8 @@
       const url = input.value.trim();
       if (!url) return showToast('Please enter a website URL', 'error');
 
+      const isAutoMonitor = document.getElementById('toggle-auto-monitor')?.checked || false;
+
       const btn = document.getElementById('btn-instant-scrape');
       btn.disabled = true;
       btn.innerHTML = `<span class="animate-spin mr-1">⏳</span> Scraping...`;
@@ -789,7 +803,7 @@
         const res = await fetch('/api/scrape', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: url }),
+          body: JSON.stringify({ url: url, auto_monitor: isAutoMonitor }),
         });
         if (!res.ok) {
           const errText = await res.text();
@@ -808,10 +822,16 @@
         document.getElementById('res-ai-section').classList.add('hidden');
         document.getElementById('res-download-pdf-btn').classList.add('hidden');
         
-        // Reset Add to Monitor button
-        resetAddToMonitorButton();
+        if (isAutoMonitor && currentPayload.domain) {
+          const updatedList = upsertLocalTarget(currentPayload.domain, ['pricing', 'changelog', 'terms']);
+          renderTargetsGrid(updatedList);
+          markAddToMonitorSuccess(currentPayload.domain);
+          showToast(`✓ Scraped & added ${currentPayload.domain} to Monitoring Domains!`, 'success');
+        } else {
+          resetAddToMonitorButton();
+          showToast(`✓ Page scraped successfully!`, 'success');
+        }
 
-        await fetchTargets();
         await fetchStatus();
         lucide.createIcons();
       } catch (err) {
@@ -828,6 +848,8 @@
       const url = input.value.trim();
       if (!url) return showToast('Please enter a website URL', 'error');
 
+      const isAutoMonitor = document.getElementById('toggle-auto-monitor')?.checked || false;
+
       const btn = document.getElementById('btn-instant-analyze');
       btn.disabled = true;
       btn.innerHTML = `<span class="animate-spin mr-1">🧠</span> Synthesizing with DeepSeek...`;
@@ -837,7 +859,7 @@
         const scrapeRes = await fetch('/api/scrape', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: url }),
+          body: JSON.stringify({ url: url, auto_monitor: isAutoMonitor }),
         });
         if (!scrapeRes.ok) {
           const errText = await scrapeRes.text();
@@ -850,7 +872,7 @@
         const analyzeRes = await fetch('/api/analyze-content', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: url, content: content, domain: scrapeData.domain }),
+          body: JSON.stringify({ url: url, content: content, domain: scrapeData.domain, auto_monitor: isAutoMonitor }),
         });
         if (!analyzeRes.ok) {
           const errText = await analyzeRes.text();
@@ -898,9 +920,9 @@
           launchesList.innerHTML = `<span class="text-slate-500">No product launches detected.</span>`;
         }
 
-        // Auto-persist analyzed domain to Monitoring Domains
+        // Check if user enabled auto-monitor toggle
         const analyzedDomain = cleanDomainStr(analyzeData.domain || url);
-        if (analyzedDomain) {
+        if (isAutoMonitor && analyzedDomain) {
           const updatedList = upsertLocalTarget(analyzedDomain, ['pricing', 'changelog', 'terms']);
           renderTargetsGrid(updatedList);
           markAddToMonitorSuccess(analyzedDomain);
@@ -910,6 +932,10 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ domain: analyzedDomain, page_types: ['pricing', 'changelog', 'terms'] }),
           }).catch(() => {});
+          showToast(`✓ Synthesized & added ${analyzedDomain} to Monitoring Domains!`, 'success');
+        } else {
+          resetAddToMonitorButton();
+          showToast(`✓ DeepSeek intelligence dossier compiled!`, 'success');
         }
 
         await fetchReports();

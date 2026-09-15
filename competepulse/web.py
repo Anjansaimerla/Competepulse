@@ -280,7 +280,7 @@ async def handle_instant_scrape(request: web.Request) -> web.Response:
         url = f"https://{url}"
 
     domain = url.split("//")[-1].split("/")[0].lower().strip()
-    if domain:
+    if domain and data.get("auto_monitor"):
         save_monitored_target(settings, domain)
 
     from .ingestion import scrape_url
@@ -329,7 +329,8 @@ async def handle_instant_analyze(request: web.Request) -> web.Response:
         domain = "competitor.com"
     domain = domain.lower().strip()
 
-    save_monitored_target(settings, domain)
+    if domain and data.get("auto_monitor"):
+        save_monitored_target(settings, domain)
 
     if not content:
         return web.json_response({"error": "Content is required for analysis"}, status=400)

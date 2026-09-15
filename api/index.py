@@ -174,7 +174,7 @@ class handler(BaseHTTPRequestHandler):
                     url = f"https://{url}"
 
                 domain = url.split("//")[-1].split("/")[0].lower().strip()
-                if domain:
+                if domain and data.get("auto_monitor"):
                     save_monitored_target(settings, domain)
 
                 page_type = PageType.PRICING
@@ -206,7 +206,8 @@ class handler(BaseHTTPRequestHandler):
                     domain = "competitor.com"
                 domain = domain.lower().strip()
 
-                save_monitored_target(settings, domain)
+                if domain and data.get("auto_monitor"):
+                    save_monitored_target(settings, domain)
 
                 if not content:
                     return self._send_json({"error": "Content is required for analysis"}, status=400)
