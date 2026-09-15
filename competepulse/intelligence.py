@@ -54,19 +54,29 @@ def _extract_message_text(response: Any) -> str:
         return content
     reasoning = getattr(message, "reasoning", None) or getattr(message, "reasoning_content", None)
     if reasoning:
-        logger.debug("Model reasoning: %s", reasoning)
+        logger.debug("Model reasoning present")
+        return str(reasoning)
     return ""
 
 
 def _validate_brief(raw_json: str) -> ExecutiveBrief:
     cleaned = raw_json.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.splitlines()
-        if lines[0].startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        cleaned = "\n".join(lines).strip()
+    if "</think>" in cleaned:
+        cleaned = cleaned.split("</think>")[-1].strip()
+
+    if "```" in cleaned:
+        import re
+
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned)
+        if match:
+            cleaned = match.group(1).strip()
+        else:
+            lines = cleaned.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned = "\n".join(lines).strip()
 
     data = json.loads(cleaned)
     if isinstance(data.get("pricing_shifts"), list):
@@ -116,14 +126,18 @@ def analyze_changes(settings: Settings, diff_payload: str) -> ExecutiveBrief:
                     model=settings.model_name,
                     messages=messages,
                     temperature=temperature,
+                    max_tokens=2048,
                     response_format={"type": "json_object"},
+                    timeout=30.0,
                 )
             except Exception:
-                # Some NIM/custom endpoints don't support response_format
+                # Some NIM/custom endpoints don't support response_format or timeout
                 response = client.chat.completions.create(
                     model=settings.model_name,
                     messages=messages,
                     temperature=temperature,
+                    max_tokens=2048,
+                    timeout=30.0,
                 )
 
             brief = _validate_brief(_extract_message_text(response))
