@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     supabase_key: str | None = None
     openai_api_key: str | None = None
     nvidia_api_key: str | None = None
+    deepseek_api_key: str | None = None
     openai_base_url: str | None = None
 
     @field_validator("supabase_url", mode="before")
@@ -71,7 +72,7 @@ class Settings(BaseSettings):
 
     # Behavior
     targets_path: Path = DEFAULT_TARGETS_PATH
-    model_name: str = Field(default="gpt-4o", alias="competepulse_model")
+    model_name: str = Field(default="deepseek-ai/deepseek-r1", alias="competepulse_model")
     embedding_model: str = "text-embedding-3-small"
     embedding_dimensions: int = 1536
     similarity_threshold: float = 0.85
@@ -141,19 +142,34 @@ class Settings(BaseSettings):
         return bool(self.supabase_url and self.supabase_key)
 
     def has_llm(self) -> bool:
-        return bool(self.openai_api_key or self.nvidia_api_key)
+        return bool(self.openai_api_key or self.nvidia_api_key or self.deepseek_api_key)
 
     @property
     def effective_llm_api_key(self) -> str | None:
-        return self.nvidia_api_key or self.openai_api_key
+        return self.deepseek_api_key or self.nvidia_api_key or self.openai_api_key
 
     @property
     def effective_llm_base_url(self) -> str | None:
         if self.openai_base_url:
             return self.openai_base_url
-        if self.nvidia_api_key:
+        if self.deepseek_api_key and not self.openai_api_key and not self.nvidia_api_key:
+            return "https://api.deepseek.com/v1"
+        if self.nvidia_api_key and not self.openai_api_key:
             return "https://integrate.api.nvidia.com/v1"
         return None
+
+    @property
+    def effective_model_name(self) -> str:
+        if self.deepseek_api_key and not self.openai_api_key and not self.nvidia_api_key:
+            if self.model_name in ("gpt-4o", "gpt-4o-mini", "gpt-4", "deepseek-ai/deepseek-r1"):
+                return "deepseek-chat"
+        if self.nvidia_api_key and not self.openai_api_key:
+            if self.model_name in ("gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-3.5-turbo"):
+                return "deepseek-ai/deepseek-r1"
+        if self.openai_api_key and not self.nvidia_api_key:
+            if "deepseek" in self.model_name:
+                return "gpt-4o-mini"
+        return self.model_name
 
     def has_scraper(self) -> bool:
         return bool(self.firecrawl_api_key)

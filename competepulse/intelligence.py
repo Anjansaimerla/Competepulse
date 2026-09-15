@@ -121,9 +121,10 @@ def analyze_changes(settings: Settings, diff_payload: str) -> ExecutiveBrief:
             temperature = 0.0
 
         try:
+            model_to_use = settings.effective_model_name
             try:
                 response = client.chat.completions.create(
-                    model=settings.model_name,
+                    model=model_to_use,
                     messages=messages,
                     temperature=temperature,
                     max_tokens=2048,
@@ -133,7 +134,7 @@ def analyze_changes(settings: Settings, diff_payload: str) -> ExecutiveBrief:
             except Exception:
                 # Some NIM/custom endpoints don't support response_format or timeout
                 response = client.chat.completions.create(
-                    model=settings.model_name,
+                    model=model_to_use,
                     messages=messages,
                     temperature=temperature,
                     max_tokens=2048,
