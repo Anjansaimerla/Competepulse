@@ -42,3 +42,38 @@ def test_build_json_diff_payload_only_includes_changed_chunks():
     assert payload[0]["change_type"] == "semantic_shift"
     assert payload[0]["previous_content"] == "Pro is $49"
     assert payload[0]["current_content"] == "Pro is now $59"
+
+
+def test_target_persistence_fallback(tmp_path):
+    from competepulse.config import Settings
+    from competepulse.vector_store import (
+        delete_monitored_target,
+        get_monitored_targets,
+        save_monitored_target,
+    )
+
+    tfile = tmp_path / "targets.json"
+    settings = Settings(targets_path=str(tfile), supabase_url="", supabase_key="")
+
+    # Initially empty
+    targets = get_monitored_targets(settings)
+    assert len(targets) == 0
+
+    # Save domain
+    save_monitored_target(settings, "https://example.com/pricing", ["pricing", "terms"])
+    targets = get_monitored_targets(settings)
+    assert len(targets) == 1
+    assert targets[0].domain == "example.com"
+    assert [p.value for p in targets[0].page_types] == ["pricing", "terms"]
+
+    # Upsert domain
+    save_monitored_target(settings, "example.com", ["pricing", "changelog", "terms"])
+    targets = get_monitored_targets(settings)
+    assert len(targets) == 1
+    assert [p.value for p in targets[0].page_types] == ["pricing", "changelog", "terms"]
+
+    # Delete domain
+    delete_monitored_target(settings, "example.com")
+    targets = get_monitored_targets(settings)
+    assert len(targets) == 0
+

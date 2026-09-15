@@ -8,6 +8,8 @@ Implements Vector-Backed Change Detection.md:
 4. Persist the new snapshot (idempotent on domain+url+hash+week).
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 from typing import Any
@@ -15,7 +17,7 @@ from typing import Any
 from .chunking import prepare_chunks
 from .config import Settings
 from .logging_utils import get_logger
-from .state import ChangeType, ChunkDiff, PageDiff, PageType, ScrapeResult, week_of_today
+from .state import ChangeType, ChunkDiff, PageDiff, PageType, ScrapeResult, Target, week_of_today
 
 logger = get_logger("competepulse.vector_store")
 
@@ -189,3 +191,113 @@ def build_json_diff_payload(diffs: list[PageDiff], max_chars_per_chunk: int = 12
                 }
             )
     return json.dumps(payload, indent=2)
+
+
+def save_monitored_target(settings: Settings, domain: str, page_types: list[str] | None = None) -> bool:
+    """Save or update a competitor target in Supabase (and local targets.json)."""
+    clean_domain = domain.split("//")[-1].split("/")[0].lower().strip()
+    if not clean_domain:
+        return False
+    pages = page_types or ["pricing", "changelog", "terms"]
+
+    if settings.has_vector_store():
+        try:
+            supabase = get_supabase(settings)
+            supabase.table("competitors").upsert({
+                "domain": clean_domain,
+                "display_name": clean_domain.capitalize(),
+                "page_types": pages,
+                "active": True,
+            }, on_conflict="domain").execute()
+            logger.info("Saved competitor %s to Supabase registry", clean_domain)
+        except Exception as exc:
+            logger.debug("Could not persist target to Supabase: %s", exc)
+
+    try:
+        from pathlib import Path
+        targets_path = Path(settings.targets_path)
+        existing = []
+        if targets_path.exists():
+            try:
+                existing = json.loads(targets_path.read_text(encoding="utf-8"))
+            except Exception:
+                existing = []
+        updated = False
+        for item in existing:
+            if item.get("domain") == clean_domain:
+                item["page_types"] = pages
+                updated = True
+                break
+        if not updated:
+            existing.append({"domain": clean_domain, "page_types": pages})
+        targets_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+    return True
+
+
+def get_monitored_targets(settings: Settings) -> list[Target]:
+    """Retrieve all active monitored competitor targets from Supabase and local targets.json."""
+    from .state import Target
+    targets_dict: dict[str, list[str]] = {}
+
+    # 1. Try Supabase registry
+    if settings.has_vector_store():
+        try:
+            supabase = get_supabase(settings)
+            response = supabase.table("competitors").select("domain, page_types").eq("active", True).execute()
+            if response.data:
+                for row in response.data:
+                    d = str(row.get("domain", "")).lower().strip()
+                    if d:
+                        targets_dict[d] = row.get("page_types") or ["pricing", "changelog", "terms"]
+        except Exception as exc:
+            logger.debug("Could not fetch targets from Supabase: %s", exc)
+
+    # 2. Local targets.json
+    try:
+        from pathlib import Path
+        targets_path = Path(settings.targets_path)
+        if targets_path.exists():
+            local_list = json.loads(targets_path.read_text(encoding="utf-8"))
+            if isinstance(local_list, list):
+                for item in local_list:
+                    if isinstance(item, dict) and item.get("domain"):
+                        d = str(item["domain"]).lower().strip()
+                        if d not in targets_dict:
+                            targets_dict[d] = item.get("page_types") or ["pricing", "changelog", "terms"]
+    except Exception:
+        pass
+
+    results: list[Target] = []
+    for dom, ptypes in targets_dict.items():
+        results.append(
+            Target(
+                domain=dom,
+                page_types=[PageType(pt) for pt in ptypes if pt in [e.value for e in PageType]] or [PageType.PRICING, PageType.CHANGELOG, PageType.TERMS],
+            )
+        )
+    return results
+
+
+def delete_monitored_target(settings: Settings, domain: str) -> bool:
+    """Deactivate target in Supabase and remove from local targets.json."""
+    clean_domain = domain.split("//")[-1].split("/")[0].lower().strip()
+    if settings.has_vector_store():
+        try:
+            supabase = get_supabase(settings)
+            supabase.table("competitors").update({"active": False}).eq("domain", clean_domain).execute()
+        except Exception as exc:
+            logger.debug("Failed to deactivate target in Supabase: %s", exc)
+
+    try:
+        from pathlib import Path
+        targets_path = Path(settings.targets_path)
+        if targets_path.exists():
+            existing = json.loads(targets_path.read_text(encoding="utf-8"))
+            filtered = [item for item in existing if item.get("domain") != clean_domain]
+            targets_path.write_text(json.dumps(filtered, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+    return True

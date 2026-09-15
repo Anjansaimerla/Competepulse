@@ -26,7 +26,12 @@ from competepulse.intelligence import analyze_changes
 from competepulse.pipeline import load_targets
 from competepulse.reporting import generate_executive_pdf
 from competepulse.state import ChangeType, ChunkDiff, ExecutiveBrief, PageDiff, PageType, Target
-from competepulse.vector_store import build_json_diff_payload
+from competepulse.vector_store import (
+    build_json_diff_payload,
+    delete_monitored_target,
+    get_monitored_targets,
+    save_monitored_target,
+)
 
 
 def _run_async(coro):
@@ -69,7 +74,7 @@ class handler(BaseHTTPRequestHandler):
             settings = get_settings()
 
             if path == "/api/status" or path == "/api/status/":
-                targets = load_targets(settings)
+                targets = get_monitored_targets(settings)
                 reports_dir = Path("/tmp/reports") if os.path.exists("/tmp") else settings.reports_dir
                 reports_count = len(list(reports_dir.glob("*.pdf"))) if reports_dir.exists() else 0
 
@@ -96,7 +101,7 @@ class handler(BaseHTTPRequestHandler):
                 return self._send_json(status_payload)
 
             elif path == "/api/targets" or path == "/api/targets/":
-                targets = load_targets(settings)
+                targets = get_monitored_targets(settings)
                 return self._send_json([
                     {"domain": t.domain, "page_types": [pt.value for pt in t.page_types]}
                     for t in targets
@@ -168,6 +173,10 @@ class handler(BaseHTTPRequestHandler):
                 if not url.startswith("http://") and not url.startswith("https://"):
                     url = f"https://{url}"
 
+                domain = url.split("//")[-1].split("/")[0].lower().strip()
+                if domain:
+                    save_monitored_target(settings, domain)
+
                 page_type = PageType.PRICING
                 url_lower = url.lower()
                 if "terms" in url_lower or "privacy" in url_lower:
@@ -178,6 +187,7 @@ class handler(BaseHTTPRequestHandler):
                 result = _run_async(scrape_url(settings, url, page_type))
                 return self._send_json({
                     "url": url,
+                    "domain": domain,
                     "page_type": page_type.value,
                     "ok": result.ok,
                     "content": result.content or "",
@@ -194,6 +204,10 @@ class handler(BaseHTTPRequestHandler):
                     domain = url.split("//")[-1].split("/")[0]
                 if not domain:
                     domain = "competitor.com"
+                domain = domain.lower().strip()
+
+                save_monitored_target(settings, domain)
+
                 if not content:
                     return self._send_json({"error": "Content is required for analysis"}, status=400)
 
@@ -246,28 +260,33 @@ class handler(BaseHTTPRequestHandler):
                 raw_pages = data.get("page_types") or ["pricing", "changelog", "terms"]
                 valid_pages = [p for p in raw_pages if p in PAGE_TYPES] or ["pricing", "changelog", "terms"]
 
-                targets_path = Path(settings.targets_path)
-                existing = []
-                if targets_path.exists():
-                    try:
-                        existing = json.loads(targets_path.read_text(encoding="utf-8"))
-                    except Exception:
-                        existing = []
-
-                updated = False
-                for item in existing:
-                    if item.get("domain") == domain:
-                        item["page_types"] = valid_pages
-                        updated = True
-                        break
-                if not updated:
-                    existing.append({"domain": domain, "page_types": valid_pages})
-
-                try:
-                    targets_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-                except Exception:
-                    pass
+                save_monitored_target(settings, domain, valid_pages)
                 return self._send_json({"status": "success", "domain": domain, "page_types": valid_pages})
+
+            self._send_json({"error": f"Endpoint not found: {path}"}, status=404)
+        except Exception as exc:
+            traceback.print_exc()
+            self._send_json({"error": f"Internal server error: {exc}"}, status=500)
+
+    def do_DELETE(self) -> None:
+        try:
+            parsed_url = urlparse(self.path)
+            path = parsed_url.path.rstrip("/")
+            settings = get_settings()
+
+            if path.startswith("/api/targets/"):
+                domain = path.replace("/api/targets/", "").strip().lower()
+                if domain:
+                    delete_monitored_target(settings, domain)
+                    return self._send_json({"status": "deleted", "domain": domain})
+            elif path == "/api/targets" or path == "/api/targets/":
+                from urllib.parse import parse_qs
+                params = parse_qs(parsed_url.query)
+                domains = params.get("domain", [])
+                if domains:
+                    domain = domains[0].strip().lower()
+                    delete_monitored_target(settings, domain)
+                    return self._send_json({"status": "deleted", "domain": domain})
 
             self._send_json({"error": f"Endpoint not found: {path}"}, status=404)
         except Exception as exc:

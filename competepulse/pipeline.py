@@ -38,26 +38,9 @@ logger = get_logger("competepulse.pipeline")
 
 
 def load_targets(settings: Settings) -> list[Target]:
-    """Read the competitor target list (targets.json by default)."""
-    path = Path(settings.targets_path)
-    if not path.exists():
-        return []
-
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        raw = []
-
-    targets: list[Target] = []
-    for item in raw:
-        if isinstance(item, dict) and item.get("domain"):
-            page_types = item.get("page_types") or list(PAGE_TYPES)
-            targets.append(
-                Target(
-                    domain=item["domain"],
-                    page_types=[PageType(pt) for pt in page_types],
-                )
-            )
+    """Read the competitor target list (from Supabase cloud registry + targets.json)."""
+    from .vector_store import get_monitored_targets
+    targets = get_monitored_targets(settings)
     logger.info("Loaded %d target domain(s)", len(targets))
     return targets
 
