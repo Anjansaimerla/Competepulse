@@ -1,18 +1,1 @@
-[
-  {
-    "domain": "example.com",
-    "page_types": [
-      "pricing",
-      "changelog",
-      "terms"
-    ]
-  },
-  {
-    "domain": "competitor.com",
-    "page_types": [
-      "pricing",
-      "changelog",
-      "terms"
-    ]
-  }
-]
+[]

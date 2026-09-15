@@ -244,12 +244,53 @@ def _get_candidate_target_paths(settings: Settings) -> list[Path]:
     return paths
 
 
+def _get_deleted_targets_path() -> Path:
+    return Path("/tmp/deleted_targets.json")
+
+
+def _read_deleted_targets() -> set[str]:
+    p = _get_deleted_targets_path()
+    if p.exists():
+        try:
+            items = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(items, list):
+                return {str(x).lower().strip() for x in items if x}
+        except Exception:
+            pass
+    return set()
+
+
+def _record_deleted_target(domain: str) -> None:
+    p = _get_deleted_targets_path()
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        current = _read_deleted_targets()
+        current.add(domain.lower().strip())
+        p.write_text(json.dumps(list(current)), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _unrecord_deleted_target(domain: str) -> None:
+    p = _get_deleted_targets_path()
+    try:
+        current = _read_deleted_targets()
+        clean = domain.lower().strip()
+        if clean in current:
+            current.remove(clean)
+            p.write_text(json.dumps(list(current)), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def save_monitored_target(settings: Settings, domain: str, page_types: list[str] | None = None) -> bool:
     """Save or update a competitor target in Supabase (and local/tmp targets.json)."""
     clean_domain = domain.split("//")[-1].split("/")[0].lower().strip()
     if not clean_domain:
         return False
     pages = page_types or ["pricing", "changelog", "terms"]
+
+    _unrecord_deleted_target(clean_domain)
 
     if settings.has_vector_store():
         try:
@@ -293,16 +334,25 @@ def get_monitored_targets(settings: Settings) -> list[Target]:
     from .state import Target
 
     targets_dict: dict[str, list[str]] = {}
+    deleted_set = _read_deleted_targets()
 
     # 1. Try Supabase registry
     if settings.has_vector_store():
         try:
             supabase = get_supabase(settings)
+            # Find inactive domains in Supabase
+            inactive_res = supabase.table("competitors").select("domain").eq("active", False).execute()
+            if inactive_res.data:
+                for row in inactive_res.data:
+                    d = str(row.get("domain", "")).lower().strip()
+                    if d:
+                        deleted_set.add(d)
+
             response = supabase.table("competitors").select("domain, page_types").eq("active", True).execute()
             if response.data:
                 for row in response.data:
                     d = str(row.get("domain", "")).lower().strip()
-                    if d:
+                    if d and d not in deleted_set:
                         targets_dict[d] = row.get("page_types") or ["pricing", "changelog", "terms"]
         except Exception as exc:
             logger.debug("Could not fetch targets from Supabase: %s", exc)
@@ -316,13 +366,15 @@ def get_monitored_targets(settings: Settings) -> list[Target]:
                     for item in local_list:
                         if isinstance(item, dict) and item.get("domain"):
                             d = str(item["domain"]).lower().strip()
-                            if d and d not in targets_dict:
+                            if d and d not in targets_dict and d not in deleted_set:
                                 targets_dict[d] = item.get("page_types") or ["pricing", "changelog", "terms"]
         except Exception:
             pass
 
     results: list[Target] = []
     for dom, ptypes in targets_dict.items():
+        if dom in deleted_set:
+            continue
         results.append(
             Target(
                 domain=dom,
@@ -335,6 +387,11 @@ def get_monitored_targets(settings: Settings) -> list[Target]:
 def delete_monitored_target(settings: Settings, domain: str) -> bool:
     """Deactivate target in Supabase and remove from local/tmp targets.json."""
     clean_domain = domain.split("//")[-1].split("/")[0].lower().strip()
+    if not clean_domain:
+        return False
+
+    _record_deleted_target(clean_domain)
+
     if settings.has_vector_store():
         try:
             supabase = get_supabase(settings)

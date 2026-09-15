@@ -441,6 +441,7 @@
   <!-- CLIENT-SIDE SCRIPT -->
   <script>
     const STORAGE_KEY = 'competepulse_monitored_domains';
+    const DELETED_KEY = 'competepulse_deleted_domains';
     let pollInterval = null;
     let currentPayload = { domain: '', content: '' };
     let currentActiveTab = 'scanner';
@@ -453,12 +454,48 @@
       return d;
     }
 
+    function getDeletedTargets() {
+      try {
+        const raw = localStorage.getItem(DELETED_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return new Set(parsed.map(cleanDomainStr));
+        }
+      } catch (e) {}
+      return new Set();
+    }
+
+    function recordDeletedTarget(domain) {
+      const clean = cleanDomainStr(domain);
+      if (!clean) return;
+      const set = getDeletedTargets();
+      set.add(clean);
+      try {
+        localStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(set)));
+      } catch (e) {}
+    }
+
+    function unrecordDeletedTarget(domain) {
+      const clean = cleanDomainStr(domain);
+      if (!clean) return;
+      const set = getDeletedTargets();
+      if (set.has(clean)) {
+        set.delete(clean);
+        try {
+          localStorage.setItem(DELETED_KEY, JSON.stringify(Array.from(set)));
+        } catch (e) {}
+      }
+    }
+
     function getLocalTargets() {
       try {
+        const deletedSet = getDeletedTargets();
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed)) {
+            return parsed.filter(t => !deletedSet.has(cleanDomainStr(t.domain)));
+          }
         }
       } catch (e) {
         console.warn('localStorage read error:', e);
@@ -468,7 +505,9 @@
 
     function saveLocalTargets(targets) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(targets));
+        const deletedSet = getDeletedTargets();
+        const filtered = Array.isArray(targets) ? targets.filter(t => !deletedSet.has(cleanDomainStr(t.domain))) : [];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
       } catch (e) {
         console.warn('localStorage write error:', e);
       }
@@ -477,15 +516,11 @@
     function upsertLocalTarget(domain, pageTypes) {
       const clean = cleanDomainStr(domain);
       if (!clean) return getLocalTargets();
+      unrecordDeletedTarget(clean);
       const pages = Array.isArray(pageTypes) && pageTypes.length > 0 ? pageTypes : ['pricing', 'changelog', 'terms'];
       
-      let list = getLocalTargets();
-      const index = list.findIndex(t => cleanDomainStr(t.domain) === clean);
-      if (index >= 0) {
-        list[index].page_types = pages;
-      } else {
-        list.unshift({ domain: clean, page_types: pages });
-      }
+      let list = getLocalTargets().filter(t => cleanDomainStr(t.domain) !== clean);
+      list.unshift({ domain: clean, page_types: pages });
       saveLocalTargets(list);
       return list;
     }
@@ -493,6 +528,7 @@
     function removeLocalTarget(domain) {
       const clean = cleanDomainStr(domain);
       if (!clean) return getLocalTargets();
+      recordDeletedTarget(clean);
       let list = getLocalTargets().filter(t => cleanDomainStr(t.domain) !== clean);
       saveLocalTargets(list);
       return list;
@@ -586,9 +622,11 @@
 
     function renderTargetsGrid(targets) {
       const grid = document.getElementById('targets-grid');
-      updateTargetsCountBadge(targets.length);
+      const deletedSet = getDeletedTargets();
+      const validTargets = (targets || []).filter(t => !deletedSet.has(cleanDomainStr(t.domain)));
+      updateTargetsCountBadge(validTargets.length);
 
-      if (!targets || targets.length === 0) {
+      if (validTargets.length === 0) {
         grid.innerHTML = `
           <div class="col-span-full p-8 rounded-xl bg-[#0D1322] border border-white/[0.06] text-center space-y-3">
             <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto">
@@ -607,7 +645,7 @@
         return;
       }
 
-      grid.innerHTML = targets.map(t => {
+      grid.innerHTML = validTargets.map(t => {
         const pageTypesJSON = JSON.stringify(t.page_types || ['pricing', 'changelog', 'terms']).replace(/"/g, '&quot;');
         return `
           <div class="p-4 rounded-xl bg-[#0D1322] border border-white/[0.08] hover:border-emerald-500/30 transition-all flex flex-col justify-between space-y-3 shadow-lg group">
@@ -656,7 +694,8 @@
     }
 
     async function fetchTargets() {
-      let currentList = getLocalTargets();
+      const deletedSet = getDeletedTargets();
+      let currentList = getLocalTargets().filter(t => !deletedSet.has(cleanDomainStr(t.domain)));
 
       try {
         const res = await fetch('/api/targets');
@@ -665,16 +704,22 @@
           if (Array.isArray(serverTargets)) {
             const mergedMap = new Map();
             
-            // Register server targets
+            // Register server targets (filter out any deleted tombstones)
             serverTargets.forEach(t => {
               const d = cleanDomainStr(t.domain);
-              if (d) mergedMap.set(d, { domain: d, page_types: t.page_types || ['pricing', 'changelog', 'terms'] });
+              if (d) {
+                if (deletedSet.has(d)) {
+                  fetch(`/api/targets/${d}`, { method: 'DELETE' }).catch(() => {});
+                } else {
+                  mergedMap.set(d, { domain: d, page_types: t.page_types || ['pricing', 'changelog', 'terms'] });
+                }
+              }
             });
             
-            // Merge local targets and background sync any local-only targets to server
+            // Merge local targets
             currentList.forEach(t => {
               const d = cleanDomainStr(t.domain);
-              if (d && !mergedMap.has(d)) {
+              if (d && !deletedSet.has(d) && !mergedMap.has(d)) {
                 mergedMap.set(d, { domain: d, page_types: t.page_types || ['pricing', 'changelog', 'terms'] });
                 fetch('/api/targets', {
                   method: 'POST',
