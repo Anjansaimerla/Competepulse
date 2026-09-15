@@ -5,8 +5,10 @@ Rules (sysrules.md):
 - Values are parsed once into an immutable, typed settings object.
 """
 
+import json
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from pydantic import Field, field_validator
@@ -43,7 +45,16 @@ class Settings(BaseSettings):
     slack_channel_id: str | None = None
     sendgrid_api_key: str | None = None
     sender_email: str | None = None
-    recipient_emails_raw: str | list[str] | None = Field(default=None, alias="recipient_emails")
+    recipient_emails_raw: str | None = Field(default=None, alias="recipient_emails")
+
+    def __init__(self, **kwargs: Any) -> None:
+        if "recipient_emails" in kwargs:
+            raw_val = kwargs.pop("recipient_emails")
+            if isinstance(raw_val, (list, tuple)):
+                kwargs["recipient_emails"] = ",".join(str(e) for e in raw_val)
+            else:
+                kwargs["recipient_emails"] = raw_val
+        super().__init__(**kwargs)
 
     # Behavior
     targets_path: Path = DEFAULT_TARGETS_PATH
@@ -57,24 +68,18 @@ class Settings(BaseSettings):
     @property
     def recipient_emails(self) -> list[str]:
         val = self.recipient_emails_raw
-        if not val:
+        if not val or not isinstance(val, str) or not val.strip():
             return []
-        if isinstance(val, (list, tuple)):
-            return [str(e).strip() for e in val if str(e).strip()]
-        if isinstance(val, str):
-            val_str = val.strip()
-            if not val_str:
-                return []
-            if val_str.startswith("[") and val_str.endswith("]"):
-                try:
-                    import json
-                    parsed = json.loads(val_str)
-                    if isinstance(parsed, list):
-                        return [str(e).strip() for e in parsed if str(e).strip()]
-                except Exception:
-                    pass
-            return [email.strip() for email in val_str.split(",") if email.strip()]
-        return []
+        val_str = val.strip()
+        if val_str.startswith("[") and val_str.endswith("]"):
+            try:
+                import json
+                parsed = json.loads(val_str)
+                if isinstance(parsed, list):
+                    return [str(e).strip() for e in parsed if str(e).strip()]
+            except Exception:
+                pass
+        return [email.strip() for email in val_str.split(",") if email.strip()]
 
     def has_vector_store(self) -> bool:
         return bool(self.supabase_url and self.supabase_key)
