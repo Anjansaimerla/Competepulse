@@ -22,6 +22,7 @@ from .config import PAGE_TYPES, Settings, get_settings
 from .logging_utils import get_logger
 from .pipeline import load_targets, run_domain_pipeline
 from .state import PageType, Target
+from .vector_store import delete_monitored_target, save_monitored_target
 
 logger = get_logger("competepulse.web")
 
@@ -168,43 +169,14 @@ async def handle_add_target(request: web.Request) -> web.Response:
     if not valid_pages:
         valid_pages = ["pricing", "changelog", "terms"]
 
-    targets_path = Path(settings.targets_path)
-    existing_targets = []
-    if targets_path.exists():
-        try:
-            existing_targets = json.loads(targets_path.read_text(encoding="utf-8"))
-        except Exception:
-            existing_targets = []
-
-    # Update if exists, or append
-    updated = False
-    for item in existing_targets:
-        if item.get("domain") == domain:
-            item["page_types"] = valid_pages
-            updated = True
-            break
-    if not updated:
-        existing_targets.append({"domain": domain, "page_types": valid_pages})
-
-    targets_path.write_text(json.dumps(existing_targets, indent=2), encoding="utf-8")
+    save_monitored_target(settings, domain, valid_pages)
     return web.json_response({"status": "success", "domain": domain, "page_types": valid_pages})
 
 
 async def handle_delete_target(request: web.Request) -> web.Response:
     settings = get_settings()
     domain = request.match_info.get("domain", "").strip().lower()
-    targets_path = Path(settings.targets_path)
-
-    if not targets_path.exists():
-        return web.json_response({"error": "Targets file not found"}, status=404)
-
-    try:
-        existing_targets = json.loads(targets_path.read_text(encoding="utf-8"))
-    except Exception:
-        existing_targets = []
-
-    filtered = [item for item in existing_targets if item.get("domain") != domain]
-    targets_path.write_text(json.dumps(filtered, indent=2), encoding="utf-8")
+    delete_monitored_target(settings, domain)
     return web.json_response({"status": "deleted", "domain": domain})
 
 
@@ -301,6 +273,10 @@ async def handle_instant_scrape(request: web.Request) -> web.Response:
     if not url.startswith("http://") and not url.startswith("https://"):
         url = f"https://{url}"
 
+    domain = url.split("//")[-1].split("/")[0].lower().strip()
+    if domain:
+        save_monitored_target(settings, domain)
+
     from .ingestion import scrape_url
     from .state import PageType
 
@@ -315,6 +291,7 @@ async def handle_instant_scrape(request: web.Request) -> web.Response:
     result = await scrape_url(settings, url, page_type)
     return web.json_response({
         "url": url,
+        "domain": domain,
         "page_type": page_type.value,
         "ok": result.ok,
         "content": result.content or "",
@@ -344,6 +321,9 @@ async def handle_instant_analyze(request: web.Request) -> web.Response:
 
     if not domain:
         domain = "competitor.com"
+    domain = domain.lower().strip()
+
+    save_monitored_target(settings, domain)
 
     if not content:
         return web.json_response({"error": "Content is required for analysis"}, status=400)
