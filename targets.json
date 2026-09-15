@@ -1,1 +1,6 @@
-[]
+[
+  {
+    "domain": "linear.app",
+    "page_types": ["pricing", "changelog", "terms"]
+  }
+]
