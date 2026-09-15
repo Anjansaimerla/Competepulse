@@ -39,6 +39,19 @@ class Settings(BaseSettings):
     nvidia_api_key: str | None = None
     openai_base_url: str | None = None
 
+    @field_validator("supabase_url", mode="before")
+    @classmethod
+    def _sanitize_supabase_url(cls, value: object) -> object:
+        if isinstance(value, str):
+            val = value.strip()
+            if "supabase.com/dashboard/project/" in val:
+                import re
+                match = re.search(r"supabase\.com/dashboard/project/([a-zA-Z0-9_-]+)", val)
+                if match:
+                    return f"https://{match.group(1)}.supabase.co"
+            return val
+        return value
+
     # Optional distribution channels
     slack_webhook_url: str | None = None
     slack_bot_token: str | None = None

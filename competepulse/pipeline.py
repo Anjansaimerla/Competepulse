@@ -40,29 +40,24 @@ logger = get_logger("competepulse.pipeline")
 def load_targets(settings: Settings) -> list[Target]:
     """Read the competitor target list (targets.json by default)."""
     path = Path(settings.targets_path)
-    fallback = Path(__file__).resolve().parent.parent / "targets.example.json"
     if not path.exists():
-        logger.warning("Targets file %s not found — falling back to %s", path, fallback.name)
-        path = fallback
+        return []
 
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         raw = []
 
-    if not raw and fallback.exists():
-        logger.info("Targets list empty, loading defaults from %s", fallback.name)
-        raw = json.loads(fallback.read_text(encoding="utf-8"))
-
     targets: list[Target] = []
     for item in raw:
-        page_types = item.get("page_types") or list(PAGE_TYPES)
-        targets.append(
-            Target(
-                domain=item["domain"],
-                page_types=[PageType(pt) for pt in page_types],
+        if isinstance(item, dict) and item.get("domain"):
+            page_types = item.get("page_types") or list(PAGE_TYPES)
+            targets.append(
+                Target(
+                    domain=item["domain"],
+                    page_types=[PageType(pt) for pt in page_types],
+                )
             )
-        )
     logger.info("Loaded %d target domain(s)", len(targets))
     return targets
 
@@ -227,12 +222,16 @@ def main(argv: list[str] | None = None) -> int:
     else:
         targets = load_targets(settings)
 
+    if not targets:
+        logger.info("No competitor domains registered in targets.json. Add targets via dashboard or CLI to run pipeline.")
+        return 0
+
     exit_code = 0
 
     for target in targets:
         try:
             state = asyncio.run(run_domain_pipeline(settings, target))
-            if state.errors:
+            if state.errors and not state.pdf_path:
                 exit_code = max(exit_code, 1)
         except Exception as exc:  # noqa: BLE001 — one domain must not kill the rest
             logger.error("Pipeline failed for %s: %s", target.domain, exc)

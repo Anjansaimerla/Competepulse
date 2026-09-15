@@ -173,7 +173,7 @@
                 <input 
                   type="text" 
                   id="dynamic-url-input" 
-                  placeholder="Paste URL e.g. stripe.com/pricing, linear.app, posthog.com..." 
+                  placeholder="Enter target competitor URL..." 
                   class="w-full bg-transparent text-white placeholder-slate-500 text-xs sm:text-sm focus:outline-none py-2 font-mono"
                   onkeydown="if(event.key==='Enter') performDynamicAnalyze()"
                 >
@@ -200,16 +200,6 @@
                 </button>
               </div>
             </div>
-          </div>
-
-          <!-- Quick presets -->
-          <div class="flex items-center justify-center flex-wrap gap-2 pt-1 text-[11px] text-slate-500">
-            <span>Quick test:</span>
-            <button onclick="setQuickUrl('stripe.com/pricing')" class="hover:text-emerald-400 underline decoration-slate-700">stripe.com/pricing</button>
-            <span>•</span>
-            <button onclick="setQuickUrl('linear.app/pricing')" class="hover:text-emerald-400 underline decoration-slate-700">linear.app/pricing</button>
-            <span>•</span>
-            <button onclick="setQuickUrl('supabase.com/pricing')" class="hover:text-emerald-400 underline decoration-slate-700">supabase.com/pricing</button>
           </div>
         </div>
       </div>
