@@ -90,6 +90,7 @@ def analyze_changes(settings: Settings, diff_payload: str) -> ExecutiveBrief:
     client = OpenAI(
         api_key=settings.effective_llm_api_key,
         base_url=settings.effective_llm_base_url,
+        timeout=45.0,
     )
     temperature = 0.2
 
@@ -110,12 +111,21 @@ def analyze_changes(settings: Settings, diff_payload: str) -> ExecutiveBrief:
             temperature = 0.0
 
         try:
-            response = client.chat.completions.create(
-                model=settings.model_name,
-                messages=messages,
-                temperature=temperature,
-                response_format={"type": "json_object"},
-            )
+            try:
+                response = client.chat.completions.create(
+                    model=settings.model_name,
+                    messages=messages,
+                    temperature=temperature,
+                    response_format={"type": "json_object"},
+                )
+            except Exception:
+                # Some NIM/custom endpoints don't support response_format
+                response = client.chat.completions.create(
+                    model=settings.model_name,
+                    messages=messages,
+                    temperature=temperature,
+                )
+
             brief = _validate_brief(_extract_message_text(response))
             logger.info(
                 "LLM analysis complete: %d pricing shift(s), %d launch(es), %d term update(s)",
@@ -124,7 +134,7 @@ def analyze_changes(settings: Settings, diff_payload: str) -> ExecutiveBrief:
                 len(brief.terms_updates),
             )
             return brief
-        except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
+        except (json.JSONDecodeError, ValidationError, KeyError, TypeError, Exception) as exc:
             last_error = exc
             logger.warning("LLM output validation failed (attempt %d): %s", attempt + 1, exc)
 

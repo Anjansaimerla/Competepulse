@@ -41,12 +41,26 @@ def get_openai(settings: Settings) -> Any:
 
 
 def embed_texts(settings: Settings, client: Any, texts: list[str]) -> list[list[float]]:
-    """Batch-embed chunks with OpenAI embeddings (1536 dims)."""
-    response = client.embeddings.create(
-        model=settings.embedding_model,
-        input=texts,
-        dimensions=settings.embedding_dimensions,
-    )
+    """Batch-embed chunks with OpenAI or NVIDIA NIM embeddings."""
+    model = settings.embedding_model
+    if not settings.openai_api_key and settings.nvidia_api_key:
+        if "text-embedding" in model or "e5-v5" in model:
+            model = "baai/bge-large-en-v1.5"
+        try:
+            response = client.embeddings.create(
+                model=model,
+                input=texts,
+                extra_body={"input_type": "passage", "truncate": "END"},
+            )
+            return [item.embedding for item in response.data]
+        except Exception:
+            pass
+
+    kwargs: dict[str, Any] = {"model": model, "input": texts}
+    if settings.openai_api_key and settings.embedding_dimensions:
+        kwargs["dimensions"] = settings.embedding_dimensions
+
+    response = client.embeddings.create(**kwargs)
     return [item.embedding for item in response.data]
 
 
@@ -54,17 +68,21 @@ def query_match_snapshots(
     supabase: Any, embedding: list[float], settings: Settings, domain: str, url: str
 ) -> list[dict[str, Any]]:
     """Call the match_snapshots RPC; returns [{id, content, similarity}]."""
-    response = supabase.rpc(
-        "match_snapshots",
-        {
-            "query_embedding": embedding,
-            "match_threshold": settings.similarity_threshold,
-            "match_count": 1,
-            "target_domain": domain,
-            "target_url": url,
-        },
-    ).execute()
-    return list(response.data or [])
+    try:
+        response = supabase.rpc(
+            "match_snapshots",
+            {
+                "query_embedding": embedding,
+                "match_threshold": settings.similarity_threshold,
+                "match_count": 1,
+                "target_domain": domain,
+                "target_url": url,
+            },
+        ).execute()
+        return list(response.data or [])
+    except Exception as exc:
+        logger.debug("RPC match_snapshots unavailable or failed (%s); treating as new content", exc)
+        return []
 
 
 def insert_snapshot(
@@ -78,20 +96,24 @@ def insert_snapshot(
     week_of: str,
 ) -> bool:
     """Idempotent insert: ignore rows already stored for this week."""
-    payload = {
-        "domain": domain,
-        "url": url,
-        "page_type": page_type.value,
-        "content": chunk,
-        "content_hash": content_hash(chunk),
-        "week_of": week_of,
-        "embedding": embedding,
-    }
-    response = supabase.table("competitor_snapshots").upsert(
-        payload,
-        on_conflict="domain,url,content_hash,week_of",
-    ).execute()
-    return bool(response.data)
+    try:
+        payload = {
+            "domain": domain,
+            "url": url,
+            "page_type": page_type.value,
+            "content": chunk,
+            "content_hash": content_hash(chunk),
+            "week_of": week_of,
+            "embedding": embedding,
+        }
+        response = supabase.table("competitor_snapshots").upsert(
+            payload,
+            on_conflict="domain,url,content_hash,week_of",
+        ).execute()
+        return bool(response.data)
+    except Exception as exc:
+        logger.debug("Could not insert snapshot to Supabase (%s)", exc)
+        return False
 
 
 def domain_of(url: str) -> str:
@@ -114,9 +136,25 @@ def detect_page_changes(
         logger.warning("No usable chunks for %s after boilerplate stripping", scrape_result.url)
         return page_diff
 
-    embeddings = embed_texts(settings, openai_client, chunks)
-    week_of = week_of_today().isoformat()
+    embeddings: list[list[float]] | None = None
+    try:
+        embeddings = embed_texts(settings, openai_client, chunks)
+    except Exception as exc:
+        logger.info("Embedding step bypassed (%s); treating content as new", exc)
 
+    if not embeddings or len(embeddings) != len(chunks):
+        for chunk in chunks:
+            page_diff.diffs.append(
+                ChunkDiff(
+                    page_type=scrape_result.page_type,
+                    url=scrape_result.url,
+                    change_type=ChangeType.NEW_CONTENT,
+                    current_chunk=chunk,
+                )
+            )
+        return page_diff
+
+    week_of = week_of_today().isoformat()
     domain = domain_of(scrape_result.url)
 
     for chunk, embedding in zip(chunks, embeddings, strict=True):
