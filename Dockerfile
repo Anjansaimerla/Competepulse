@@ -11,9 +11,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source
 COPY competepulse/ ./competepulse/
-COPY main.py targets.example.json ./
+COPY main.py server.py targets.example.json ./
 
 # Reports and dead-lettered deliveries are written here
 RUN mkdir -p reports failed_deliveries
 
-CMD ["python", "main.py"]
+ENV PORT=8080
+EXPOSE 8080
+
+CMD ["python", "server.py"]
