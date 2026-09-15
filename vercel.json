@@ -1,11 +1,10 @@
 {
   "version": 2,
-  "public": true,
   "cleanUrls": true,
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/competepulse/static/index.html"
+      "dest": "/public/index.html"
     }
   ]
 }
