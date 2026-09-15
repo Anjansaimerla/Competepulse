@@ -8,6 +8,7 @@ on:
 jobs:
   run-agent:
     runs-on: ubuntu-latest
+    environment: FIRECRAWL_API_KEY
     timeout-minutes: 10
 
     steps:
@@ -27,18 +28,18 @@ jobs:
 
       - name: Run Competepulse Agent
         env:
-          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL || 'https://integrate.api.nvidia.com/v1' }}
-          COMPETEPULSE_MODEL: ${{ secrets.COMPETEPULSE_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
-          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-          RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY || vars.FIRECRAWL_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || vars.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY || vars.SUPABASE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || vars.OPENAI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY || vars.NVIDIA_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL || vars.OPENAI_BASE_URL || 'https://integrate.api.nvidia.com/v1' }}
+          COMPETEPULSE_MODEL: ${{ secrets.COMPETEPULSE_MODEL || vars.COMPETEPULSE_MODEL || 'deepseek-ai/deepseek-v4-flash-0731' }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL || vars.SLACK_WEBHOOK_URL }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN || vars.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID || vars.SLACK_CHANNEL_ID }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY || vars.SENDGRID_API_KEY }}
+          SENDER_EMAIL: ${{ secrets.SENDER_EMAIL || vars.SENDER_EMAIL }}
+          RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS || vars.RECIPIENT_EMAILS }}
           COMPETEPULSE_TARGETS: targets.json
         run: python main.py
