@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     slack_channel_id: str | None = None
     sendgrid_api_key: str | None = None
     sender_email: str | None = None
-    recipient_emails: list[str] = Field(default_factory=list)
+    recipient_emails: list[str] | str = Field(default_factory=list)
 
     # Behavior
     targets_path: Path = DEFAULT_TARGETS_PATH
@@ -56,10 +56,25 @@ class Settings(BaseSettings):
 
     @field_validator("recipient_emails", mode="before")
     @classmethod
-    def _split_recipients(cls, value: object) -> object:
+    def _split_recipients(cls, value: object) -> list[str]:
+        if not value:
+            return []
         if isinstance(value, str):
-            return [email.strip() for email in value.split(",") if email.strip()]
-        return value
+            val_str = value.strip()
+            if not val_str:
+                return []
+            if val_str.startswith("[") and val_str.endswith("]"):
+                try:
+                    import json
+                    parsed = json.loads(val_str)
+                    if isinstance(parsed, list):
+                        return [str(e).strip() for e in parsed if str(e).strip()]
+                except Exception:
+                    pass
+            return [email.strip() for email in val_str.split(",") if email.strip()]
+        if isinstance(value, (list, tuple)):
+            return [str(e).strip() for e in value if str(e).strip()]
+        return []
 
     def has_vector_store(self) -> bool:
         return bool(self.supabase_url and self.supabase_key)
