@@ -231,7 +231,7 @@ class handler(BaseHTTPRequestHandler):
                         "pricing_shifts": [s.model_dump() for s in brief.pricing_shifts],
                         "product_launches": brief.product_launches,
                         "terms_updates": brief.terms_updates,
-                        "threat_level": brief.threat_level.value,
+                        "key_takeaways": brief.key_takeaways,
                     },
                     "pdf_filename": pdf_path.name,
                     "download_url": f"/api/reports/{pdf_path.name}",
