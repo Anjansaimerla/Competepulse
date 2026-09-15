@@ -78,6 +78,49 @@ class Settings(BaseSettings):
     distribution_dry_run: bool = False
     reports_dir: Path = PROJECT_ROOT / "reports"
 
+    @field_validator("distribution_dry_run", mode="before")
+    @classmethod
+    def _parse_dry_run(cls, value: object) -> bool:
+        if isinstance(value, str):
+            val = value.strip().lower()
+            if not val or val in ("false", "0", "no", "off", "f"):
+                return False
+            if val in ("true", "1", "yes", "on", "t"):
+                return True
+        if isinstance(value, bool):
+            return value
+        return False
+
+    @field_validator("similarity_threshold", mode="before")
+    @classmethod
+    def _parse_similarity_threshold(cls, value: object) -> float:
+        if isinstance(value, str):
+            val = value.strip()
+            if not val:
+                return 0.85
+            try:
+                return float(val)
+            except ValueError:
+                return 0.85
+        if isinstance(value, (int, float)):
+            return float(value)
+        return 0.85
+
+    @field_validator("embedding_dimensions", mode="before")
+    @classmethod
+    def _parse_embedding_dimensions(cls, value: object) -> int:
+        if isinstance(value, str):
+            val = value.strip()
+            if not val:
+                return 1536
+            try:
+                return int(val)
+            except ValueError:
+                return 1536
+        if isinstance(value, int):
+            return value
+        return 1536
+
     @property
     def recipient_emails(self) -> list[str]:
         val = self.recipient_emails_raw
